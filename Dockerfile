@@ -17,6 +17,7 @@ RUN apk add --no-cache \
     freetype-dev \
     libjpeg-turbo-dev \
     sqlite-dev \
+    oniguruma-dev \
     $PHPIZE_DEPS
 
 # Configure GD with freetype and jpeg
