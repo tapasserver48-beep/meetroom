@@ -1,8 +1,9 @@
 services:
   - type: web
     name: meetroom
-    runtime: php
+    runtime: docker
     plan: free
+    dockerfilePath: ./Dockerfile
     buildCommand: |
       composer install --optimize-autoloader --no-dev
       npm ci && npm run build
@@ -46,7 +47,6 @@ services:
       - key: REVERB_SCHEME
         value: http
       - key: REVERB_PUBLIC_WS_URL
-        sync: false
         value: ""
       - key: CLOUDFLARE_TURN_KEY_ID
         value: d620458570a991df270da6f309d52e3b
@@ -55,7 +55,8 @@ services:
 
   - type: worker
     name: reverb
-    runtime: php
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     buildCommand: composer install --optimize-autoloader --no-dev
     startCommand: php artisan reverb:start --host=0.0.0.0 --port=8080
