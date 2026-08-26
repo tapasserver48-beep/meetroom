@@ -48,12 +48,13 @@ COPY bootstrap/app.php ./bootstrap/app.php
 COPY config/app.php ./config/app.php
 
 # Debug: verify files exist
-RUN ls -la artisan bootstrap/app.php config/app.php && chmod +x artisan && file artisan && head -1 artisan
+RUN ls -la artisan bootstrap/app.php config/app.php && chmod +x artisan && file artisan && head -5 artisan && php -v
 
-# Install PHP dependencies
+# Install PHP dependencies without scripts
 RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --no-interaction --no-scripts
 
-# Run package discovery manually
+# Run package discovery manually with debug
+RUN php artisan --version
 RUN php artisan package:discover --ansi
 
 # Copy package files
