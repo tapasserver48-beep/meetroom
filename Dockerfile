@@ -48,10 +48,13 @@ COPY bootstrap/app.php ./bootstrap/app.php
 COPY config/app.php ./config/app.php
 
 # Debug: verify files exist
-RUN ls -la artisan bootstrap/app.php config/app.php && chmod +x artisan
+RUN ls -la artisan bootstrap/app.php config/app.php && chmod +x artisan && file artisan && head -1 artisan
 
 # Install PHP dependencies
-RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --no-interaction
+RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --no-interaction --no-scripts
+
+# Run package discovery manually
+RUN php artisan package:discover --ansi
 
 # Copy package files
 COPY package.json package-lock.json ./
