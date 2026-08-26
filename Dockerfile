@@ -21,8 +21,15 @@ RUN apk add --no-cache \
 # Configure GD with freetype and jpeg
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg
 
-# Install PHP extensions
-RUN docker-php-ext-install pdo pdo_mysql pdo_sqlite zip gd mbstring xml bcmath
+# Install PHP extensions one by one to isolate failures
+RUN docker-php-ext-install pdo
+RUN docker-php-ext-install pdo_mysql
+RUN docker-php-ext-install pdo_sqlite
+RUN docker-php-ext-install zip
+RUN docker-php-ext-install gd
+RUN docker-php-ext-install mbstring
+RUN docker-php-ext-install xml
+RUN docker-php-ext-install bcmath
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
