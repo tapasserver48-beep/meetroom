@@ -16,7 +16,7 @@ RUN apk add --no-cache \
     $PHPIZE_DEPS
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo pdo_mysql zip gd
+RUN docker-php-ext-install pdo pdo_mysql pdo_sqlite zip gd mbstring xml curl openssl tokenizer json bcmath
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -28,7 +28,7 @@ WORKDIR /var/www/html
 COPY composer.json composer.lock ./
 
 # Install PHP dependencies
-RUN composer install --optimize-autoloader --no-dev --no-interaction
+RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --no-interaction
 
 # Copy package files
 COPY package.json package-lock.json ./
