@@ -42,6 +42,11 @@ WORKDIR /var/www/html
 # Copy composer files first for caching
 COPY composer.json composer.lock ./
 
+# Copy artisan and essential files for package discovery
+COPY artisan ./
+COPY bootstrap/app.php ./bootstrap/app.php
+COPY config/app.php ./config/app.php
+
 # Install PHP dependencies
 RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --no-interaction
 
