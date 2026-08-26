@@ -13,7 +13,13 @@ RUN apk add --no-cache \
     zip \
     unzip \
     linux-headers \
+    libxml2-dev \
+    freetype-dev \
+    libjpeg-turbo-dev \
     $PHPIZE_DEPS
+
+# Configure GD with freetype and jpeg
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg
 
 # Install PHP extensions
 RUN docker-php-ext-install pdo pdo_mysql pdo_sqlite zip gd mbstring xml bcmath
