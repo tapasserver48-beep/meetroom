@@ -16,6 +16,7 @@ RUN apk add --no-cache \
     libxml2-dev \
     freetype-dev \
     libjpeg-turbo-dev \
+    sqlite-dev \
     $PHPIZE_DEPS
 
 # Configure GD with freetype and jpeg
