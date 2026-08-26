@@ -51,29 +51,3 @@ services:
         value: d620458570a991df270da6f309d52e3b
       - key: CLOUDFLARE_TURN_KEY_SECRET
         value: 2c362dbe9099c5fe1a7ec2e3b020d888eaaa8b54754239c21a586a5a2a8ffda7
-
-  - type: worker
-    name: reverb
-    runtime: docker
-    plan: free
-    dockerfilePath: ./Dockerfile
-    buildCommand: composer install --optimize-autoloader --no-dev
-    envVars:
-      - key: APP_KEY
-        generateValue: true
-      - key: APP_ENV
-        value: production
-      - key: APP_DEBUG
-        value: false
-      - key: REVERB_APP_ID
-        value: local
-      - key: REVERB_APP_KEY
-        value: local
-      - key: REVERB_APP_SECRET
-        value: local
-      - key: REVERB_HOST
-        value: 0.0.0.0
-      - key: REVERB_PORT
-        value: 8080
-      - key: REVERB_SCHEME
-        value: http
