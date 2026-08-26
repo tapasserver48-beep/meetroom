@@ -16,7 +16,7 @@ RUN apk add --no-cache \
     $PHPIZE_DEPS
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo pdo_mysql pdo_sqlite zip gd mbstring xml curl openssl tokenizer json bcmath
+RUN docker-php-ext-install pdo pdo_mysql pdo_sqlite zip gd mbstring xml bcmath
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
