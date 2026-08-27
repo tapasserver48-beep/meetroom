@@ -19,7 +19,7 @@
         'participantName' => $participant->display_name,
         'isHost' => $isHostUser,
         'echo' => $echoConfig,
-        'iceServers' => json_encode($iceServers ?? []),
+        'iceServers' => $iceServers ?? [],
         'urls' => [
             'state' => route('rooms.state', $meeting),
             'hello' => route('rooms.hello', $meeting),
@@ -292,12 +292,18 @@
         await initLocalMedia();
         setupUI();
         renderRosterSelf();
-        await syncRoster();   // REST-first: roster correct even if WS is slow/down
-        announceHello();      // presence broadcast (subscribed peers offer to us)
-        await connectSignaling();
         setupUnload();
-        setInterval(() => syncRoster(), 10000);  // roster re-sync + offer reconcile
-        setInterval(pollSignals, 2000);          // reliable signal delivery fallback
+
+        // Start REST polling FIRST — this is the reliable path
+        setInterval(() => syncRoster(), 5000);
+        setInterval(pollSignals, 2000);
+
+        await syncRoster();
+        await announceHello();
+        reconcilePeers();
+
+        // Then try WebSocket (nice to have, not required)
+        await connectSignaling();
     });
     async function initLocalMedia() {
         try {
@@ -327,8 +333,9 @@
         document.getElementById('camera-btn').classList.toggle('bg-red-600', !isCameraEnabled);
     }
 
-    // ---- Signaling (Laravel Echo + REST relay) ------------------------------
+    // ---- Signaling (REST-first, WebSocket optional) ----------------------------
     async function connectSignaling() {
+        // Try WebSocket first (fast, real-time)
         try {
             window.echo = await window.initEcho(roomConfig.echo);
             channel = window.echo.join(`meeting.${roomConfig.meetingId}`);
@@ -337,13 +344,20 @@
             bindRoomEvents();
 
             channel.subscribed(async () => {
-                console.log('[room] subscribed — announcing presence');
+                console.log('[room] WS subscribed');
                 setConnectionStatus('connected');
-                await announceHello();
             });
+
+            // If WS connects within 3s, great. Otherwise fall back to REST.
+            setTimeout(() => {
+                if (statusText.textContent !== 'Connected') {
+                    console.log('[room] WS slow — using REST polling');
+                    setConnectionStatus('connected');
+                }
+            }, 3000);
         } catch (err) {
-            console.error('Signaling init failed:', err);
-            setConnectionStatus('failed');
+            console.warn('WS init failed, using REST polling:', err);
+            setConnectionStatus('connected');
         }
     }
 
@@ -428,25 +442,36 @@
     /**
      * Deterministic mesh rule: for every other joined participant, exactly ONE
      * side creates the offer — the participant with the LOWER id (older peer).
-     * This prevents glare (both offering at once) and deadlocks (offers sent
-     * before the other side subscribed are retried here every 10s).
+     * This prevents glare (both offering at once).
+     * Retry every poll cycle if previous attempt failed.
      */
     function reconcilePeers() {
         roster.forEach((p, id) => {
             if (id === me.id || p.status !== 'joined') return;
-            if (me.id < id) maybeOffer(id);
+            if (me.id < id) {
+                const pc = peers.get(id);
+                // Offer if no peer yet, or peer is closed/failed, or we never offered
+                if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed' || !offeredTo.has(id)) {
+                    maybeOffer(id);
+                }
+            }
         });
     }
 
     async function maybeOffer(peerId) {
-        const pc = createPeer(peerId);
-        if (offeredTo.has(peerId) && pc.signalingState === 'stable') return;
-        if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') return;
+        try {
+            const pc = createPeer(peerId);
+            if (pc.signalingState === 'have-local-offer') return;
+            if (pc.signalingState !== 'stable') return;
 
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        offeredTo.add(peerId);
-        postSignal(peerId, 'offer', { sdp: pc.localDescription.sdp, type: 'offer' });
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            offeredTo.add(peerId);
+            await postSignal(peerId, 'offer', { sdp: pc.localDescription.sdp, type: 'offer' });
+        } catch (err) {
+            console.warn('[room] maybeOffer failed for', peerId, err);
+            offeredTo.delete(peerId);
+        }
     }
 
     // ---- WebRTC mesh ----------------------------------------------------------
@@ -455,11 +480,17 @@
         if (existing && existing.connectionState !== 'closed') return existing;
         if (existing) peers.delete(peerId);
 
-        const iceServers = roomConfig.iceServers || [
-            { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            { urls: 'stun:stun.nextcloud.com:443' },
-        ];
+        let iceServers = roomConfig.iceServers;
+        if (typeof iceServers === 'string') {
+            try { iceServers = JSON.parse(iceServers); } catch (e) { iceServers = null; }
+        }
+        if (!iceServers || !Array.isArray(iceServers) || iceServers.length === 0) {
+            iceServers = [
+                { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+                { urls: 'stun:global.stun.twilio.com:3478' },
+                { urls: 'stun:stun.nextcloud.com:443' },
+            ];
+        }
 
         const pc = new RTCPeerConnection({
             iceServers,
@@ -517,27 +548,39 @@
     }
 
     async function handlePeerHello(msg) {
-        roster.set(msg.participant.participant_id, msg.participant);
+        if (msg.participant) {
+            roster.set(msg.participant.participant_id, msg.participant);
+        }
         renderRoster();
-
         // Older peer initiates the offer to the newcomer.
-        if (me.id < msg.from) maybeOffer(msg.from);
+        if (me.id < msg.from) {
+            // Small delay so newcomer's peer connection is ready
+            setTimeout(() => maybeOffer(msg.from), 500);
+        }
     }
 
     async function handleOffer(msg) {
-        const pc = createPeer(msg.from);
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.data.sdp }));
-        flushPendingIce(msg.from);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        postSignal(msg.from, 'answer', { sdp: pc.localDescription.sdp, type: 'answer' });
+        try {
+            const pc = createPeer(msg.from);
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.data.sdp }));
+            flushPendingIce(msg.from);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            await postSignal(msg.from, 'answer', { sdp: pc.localDescription.sdp, type: 'answer' });
+        } catch (err) {
+            console.warn('[room] handleOffer error:', err);
+        }
     }
 
     async function handleAnswer(msg) {
-        const pc = peers.get(msg.from);
-        if (!pc) return;
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.data.sdp }));
-        flushPendingIce(msg.from);
+        try {
+            const pc = peers.get(msg.from);
+            if (!pc) return;
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.data.sdp }));
+            flushPendingIce(msg.from);
+        } catch (err) {
+            console.warn('[room] handleAnswer error:', err);
+        }
     }
 
     async function handleIce(msg) {
@@ -592,10 +635,12 @@
         }
     }
 
-    function postSignal(to, type, data) {
-        return window.axios.post(urls.signal, { to, type, data }).catch(err => {
-            console.warn(`signal ${type} to ${to} failed:`, err?.response?.status);
-        });
+    async function postSignal(to, type, data) {
+        try {
+            await window.axios.post(urls.signal, { to, type, data });
+        } catch (err) {
+            console.warn(`[room] signal ${type} to ${to} failed:`, err?.response?.status || err.message);
+        }
     }
 
     // ---- Remote tiles / roster -------------------------------------------------
