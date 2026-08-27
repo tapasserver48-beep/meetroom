@@ -17,6 +17,7 @@ RUN apk add --no-cache \
     freetype-dev \
     libjpeg-turbo-dev \
     sqlite-dev \
+    postgresql-dev \
     oniguruma-dev \
     $PHPIZE_DEPS \
     gettext
@@ -28,6 +29,7 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg
 RUN docker-php-ext-install pdo
 RUN docker-php-ext-install pdo_mysql
 RUN docker-php-ext-install pdo_sqlite
+RUN docker-php-ext-install pdo_pgsql
 RUN docker-php-ext-install zip
 RUN docker-php-ext-install gd
 RUN docker-php-ext-install mbstring
@@ -57,9 +59,6 @@ COPY . .
 
 # Build frontend assets (resources folder now exists)
 RUN npm run build
-
-# Create SQLite database directory and file
-RUN mkdir -p database && touch database/database.sqlite && chmod 664 database/database.sqlite
 
 # Run composer scripts now that app code is present (package discovery)
 RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload --optimize --no-dev

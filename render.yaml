@@ -20,9 +20,27 @@ services:
       - key: LOG_CHANNEL
         value: stderr
       - key: DB_CONNECTION
-        value: sqlite
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: meetroom-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: meetroom-db
+          property: port
       - key: DB_DATABASE
-        value: /var/www/html/database/database.sqlite
+        fromDatabase:
+          name: meetroom-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: meetroom-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: meetroom-db
+          property: password
       - key: BROADCAST_CONNECTION
         value: reverb
       - key: QUEUE_CONNECTION
@@ -45,10 +63,6 @@ services:
         value: d620458570a991df270da6f309d52e3b
       - key: CLOUDFLARE_TURN_KEY_SECRET
         value: 2c362dbe9099c5fe1a7ec2e3b020d888eaaa8b54754239c21a586a5a2a8ffda7
-    disk:
-      name: sqlite-data
-      mountPath: /var/www/html/database
-      sizeGB: 1
 
 databases:
   - name: meetroom-db

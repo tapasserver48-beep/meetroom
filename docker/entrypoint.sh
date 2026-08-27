@@ -1,11 +1,5 @@
 #!/bin/sh
 
-# Create SQLite database if it doesn't exist
-mkdir -p /var/www/html/database
-touch /var/www/html/database/database.sqlite
-chmod 777 /var/www/html/database
-chmod 777 /var/www/html/database/database.sqlite
-
 # Ensure ALL storage and cache directories exist with full permissions
 mkdir -p /var/www/html/storage/app/public
 mkdir -p /var/www/html/storage/framework/cache/data
@@ -25,8 +19,12 @@ APP_KEY=${APP_KEY}
 APP_DEBUG=${APP_DEBUG:-false}
 APP_URL=${APP_URL}
 
-DB_CONNECTION=${DB_CONNECTION:-sqlite}
-DB_DATABASE=${DB_DATABASE:-/var/www/html/database/database.sqlite}
+DB_CONNECTION=pgsql
+DB_HOST=${DB_HOST}
+DB_PORT=${DB_PORT:-5432}
+DB_DATABASE=${DB_DATABASE}
+DB_USERNAME=${DB_USERNAME}
+DB_PASSWORD=${DB_PASSWORD}
 
 SESSION_DRIVER=database
 SESSION_LIFETIME=120
