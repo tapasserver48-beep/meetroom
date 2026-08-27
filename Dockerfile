@@ -49,11 +49,14 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --n
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install and build frontend assets
-RUN npm ci && npm run build
+# Install npm dependencies (cached layer)
+RUN npm ci
 
-# Copy application code
+# Copy application code (needed for Vite build - resources, vite.config.js, etc.)
 COPY . .
+
+# Build frontend assets (resources folder now exists)
+RUN npm run build
 
 # Create SQLite database directory and file
 RUN mkdir -p database && touch database/database.sqlite && chmod 664 database/database.sqlite
