@@ -16,7 +16,8 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
-# Generate nginx config from template using PORT env var
+# Generate nginx config from template using PORT env var (default 10000)
+export PORT=${PORT:-10000}
 envsubst '${PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # Start PHP-FPM in background
