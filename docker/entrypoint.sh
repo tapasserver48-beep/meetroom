@@ -75,6 +75,7 @@ php-fpm -D
 
 # Start Reverb WebSocket server in background
 php artisan reverb:start --host=0.0.0.0 --port=8080 &
+sleep 2
 
 # Start Nginx in foreground
 nginx -g "daemon off;"

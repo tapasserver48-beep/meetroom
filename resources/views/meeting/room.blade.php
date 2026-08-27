@@ -1,24 +1,15 @@
 @extends('layouts.app')
 
 @php
-    $publicHost = trim((string) config('meetroom.reverb.public_host'));
-    if ($publicHost) {
-        $echoConfig = [
-            'key' => config('meetroom.reverb.key'),
-            'wsHost' => $publicHost,
-            'wsPort' => 80,
-            'wssPort' => 443,
-            'forceTLS' => true,
-        ];
-    } else {
-        $echoConfig = [
-            'key' => config('meetroom.reverb.key'),
-            'wsHost' => request()->getHost(),
-            'wsPort' => (int) config('meetroom.reverb.port'),
-            'wssPort' => (int) config('meetroom.reverb.port'),
-            'forceTLS' => false,
-        ];
-    }
+    $publicHost = trim((string) config('meetroom.reverb.public_host')) ?: request()->getHost();
+    $isHttps = request()->isSecure();
+    $echoConfig = [
+        'key' => config('meetroom.reverb.key'),
+        'wsHost' => $publicHost,
+        'wsPort' => 80,
+        'wssPort' => 443,
+        'forceTLS' => $isHttps,
+    ];
     $isHostUser = $participant->role === 'host' || $participant->role === 'cohost'
         || (auth()->check() && auth()->id() === $meeting->host_id);
     $roomConfig = [

@@ -58,10 +58,7 @@ services:
       - key: REVERB_SCHEME
         value: http
       - key: REVERB_PUBLIC_WS_URL
-        fromService:
-          type: web
-          name: meetroom
-          property: host
+        value: ""
       - key: CLOUDFLARE_TURN_KEY_ID
         value: d620458570a991df270da6f309d52e3b
       - key: CLOUDFLARE_TURN_KEY_SECRET
