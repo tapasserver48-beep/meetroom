@@ -12,9 +12,28 @@ chmod 664 /var/www/html/database/database.sqlite
 mkdir -p /var/www/html/storage/logs /var/www/html/storage/framework/cache /var/www/html/storage/framework/sessions /var/www/html/storage/framework/views /var/www/html/bootstrap/cache
 chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Generate APP_KEY if not set
+# Generate APP_KEY if not set or invalid
 if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
     php artisan key:generate --force
+else
+    # Validate APP_KEY format (must be base64: + 32 bytes = 44 chars after base64:)
+    KEY_CHECK=$(php -r "
+        \$key = getenv('APP_KEY');
+        if (str_starts_with(\$key, 'base64:')) {
+            \$decoded = base64_decode(substr(\$key, 7), true);
+            if (\$decoded !== false && strlen(\$decoded) === 32) {
+                echo 'valid';
+            } else {
+                echo 'invalid';
+            }
+        } else {
+            echo 'invalid';
+        }
+    ")
+    if [ "$KEY_CHECK" != "valid" ]; then
+        echo "Invalid APP_KEY format, generating new one..."
+        php artisan key:generate --force
+    fi
 fi
 
 # Create .env from environment variables (Render injects these at runtime)
@@ -51,6 +70,9 @@ CLOUDFLARE_TURN_KEY_SECRET=${CLOUDFLARE_TURN_KEY_SECRET:-}
 
 LOG_CHANNEL=${LOG_CHANNEL:-stderr}
 EOF
+
+# Clear any cached config before regenerating
+php artisan config:clear 2>/dev/null || true
 
 # Run migrations
 php artisan migrate --force
