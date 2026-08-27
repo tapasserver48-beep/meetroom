@@ -71,7 +71,7 @@ class RoomController extends Controller
         $this->relay($meeting, $me, [
             'type' => 'hello',
             'participant' => $this->participantPayload($me),
-        ]);
+        ], null, persist: true);
 
         $participants = $meeting->participants()
             ->where('status', 'joined')
@@ -143,7 +143,7 @@ class RoomController extends Controller
                 'camera_enabled' => (bool) $me->camera_enabled,
                 'screen_sharing' => (bool) $me->screen_sharing,
             ],
-        ]);
+        ], null, persist: true);
 
         return response()->json(['ok' => true]);
     }
@@ -341,6 +341,10 @@ class RoomController extends Controller
             ]);
         }
 
-        broadcast(new SignalRelay($meeting->id, $full));
+        try {
+            broadcast(new SignalRelay($meeting->id, $full));
+        } catch (\Throwable $e) {
+            \Log::warning('Broadcast failed: ' . $e->getMessage());
+        }
     }
 }
