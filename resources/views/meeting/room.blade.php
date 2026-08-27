@@ -28,7 +28,7 @@
         'participantName' => $participant->display_name,
         'isHost' => $isHostUser,
         'echo' => $echoConfig,
-        'iceServers' => @json($iceServers ?? []),
+        'iceServers' => json_encode($iceServers ?? []),
         'urls' => [
             'state' => route('rooms.state', $meeting),
             'hello' => route('rooms.hello', $meeting),
