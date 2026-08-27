@@ -49,8 +49,8 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --n
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install npm dependencies (cached layer)
-RUN npm ci
+# Install npm dependencies
+RUN npm install
 
 # Copy application code (needed for Vite build - resources, vite.config.js, etc.)
 COPY . .
