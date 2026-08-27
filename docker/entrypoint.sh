@@ -3,7 +3,8 @@
 # Create SQLite database if it doesn't exist
 mkdir -p /var/www/html/database
 touch /var/www/html/database/database.sqlite
-chmod 664 /var/www/html/database/database.sqlite
+chmod 777 /var/www/html/database
+chmod 777 /var/www/html/database/database.sqlite
 
 # Ensure ALL storage and cache directories exist with full permissions
 mkdir -p /var/www/html/storage/app/public
