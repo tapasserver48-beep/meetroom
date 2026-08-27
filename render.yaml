@@ -7,7 +7,7 @@ services:
     dockerContext: .
     envVars:
       - key: APP_KEY
-        generateValue: true
+        value: base64:8ECU46ybC3U/9KjkKJmZbw+RyH5IMq4mR8PDesf04HY=
       - key: APP_URL
         fromService:
           type: web
