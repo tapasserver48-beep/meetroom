@@ -8,6 +8,20 @@ mkdir -p /var/www/html/database
 touch /var/www/html/database/database.sqlite
 chmod 664 /var/www/html/database/database.sqlite
 
+# Ensure storage and bootstrap/cache directories exist and are writable
+mkdir -p /var/www/html/storage/logs /var/www/html/storage/framework/cache /var/www/html/storage/framework/sessions /var/www/html/storage/framework/views /var/www/html/bootstrap/cache
+chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+
+# Generate APP_KEY if not set
+if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
+    php artisan key:generate --force
+fi
+
+# Copy .env.example to .env if .env doesn't exist (for any missing env vars)
+if [ ! -f /var/www/html/.env ]; then
+    cp /var/www/html/.env.example /var/www/html/.env
+fi
+
 # Run migrations
 php artisan migrate --force
 
