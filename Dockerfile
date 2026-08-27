@@ -43,19 +43,8 @@ WORKDIR /var/www/html
 # Copy composer files first for caching
 COPY composer.json composer.lock ./
 
-# Copy artisan and essential files for package discovery
-COPY artisan ./
-COPY bootstrap/app.php ./bootstrap/app.php
-COPY config/app.php ./config/app.php
-
-# Debug: verify files exist
-RUN ls -la artisan bootstrap/app.php config/app.php && chmod +x artisan && php -v
-
-# Install PHP dependencies (with scripts for package discovery)
-RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --no-interaction
-
-# Test PHP and artisan
-RUN php -r "echo 'PHP OK';" && php artisan --version
+# Install PHP dependencies WITHOUT scripts (for layer caching)
+RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --no-interaction --no-scripts
 
 # Copy package files
 COPY package.json package-lock.json ./
@@ -68,6 +57,12 @@ COPY . .
 
 # Create SQLite database directory and file
 RUN mkdir -p database && touch database/database.sqlite && chmod 664 database/database.sqlite
+
+# Run composer scripts now that app code is present (package discovery)
+RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload --optimize --no-dev
+
+# Test PHP and artisan
+RUN php -r "echo 'PHP OK';" && php artisan --version
 
 # Run Laravel build commands
 RUN php artisan config:cache && \
