@@ -18,7 +18,8 @@ RUN apk add --no-cache \
     libjpeg-turbo-dev \
     sqlite-dev \
     oniguruma-dev \
-    $PHPIZE_DEPS
+    $PHPIZE_DEPS \
+    gettext
 
 # Configure GD with freetype and jpeg
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg
@@ -48,13 +49,10 @@ COPY bootstrap/app.php ./bootstrap/app.php
 COPY config/app.php ./config/app.php
 
 # Debug: verify files exist
-RUN ls -la artisan bootstrap/app.php config/app.php && chmod +x artisan && file artisan && head -10 artisan && cat artisan
+RUN ls -la artisan bootstrap/app.php config/app.php && chmod +x artisan && php -v
 
-# Debug PHP
-RUN php -v && php -r "echo 'PHP works';"
-
-# Install PHP dependencies without scripts
-RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --no-interaction --no-scripts
+# Install PHP dependencies (with scripts for package discovery)
+RUN COMPOSER_MEMORY_LIMIT=-1 composer install --optimize-autoloader --no-dev --no-interaction
 
 # Test PHP and artisan
 RUN php -r "echo 'PHP OK';" && php artisan --version
@@ -68,20 +66,21 @@ RUN npm ci && npm run build
 # Copy application code
 COPY . .
 
+# Create SQLite database directory and file
+RUN mkdir -p database && touch database/database.sqlite && chmod 664 database/database.sqlite
+
 # Run Laravel build commands
 RUN php artisan config:cache && \
     php artisan route:cache && \
     php artisan view:cache
 
-# Copy nginx config
-COPY docker/nginx.conf /etc/nginx/nginx.conf
-
-# Create entrypoint script
+# Copy nginx config template and entrypoint
+COPY docker/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Expose port
-EXPOSE 8000
+# Expose port (Render uses PORT env var, default 10000)
+EXPOSE 10000
 
 # Start services
 ENTRYPOINT ["/entrypoint.sh"]

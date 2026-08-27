@@ -34,8 +34,8 @@ http {
     }
 
     server {
-        listen 8000;
-        listen [::]:8000;
+        listen ${PORT:-10000};
+        listen [::]:${PORT:-10000};
         server_name _;
         root /var/www/html/public;
 

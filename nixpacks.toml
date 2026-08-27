@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["php83", "nodejs_20", "composer", "nginx"]
+nixPkgs = ["php83", "nodejs_20", "composer", "nginx", "gettext"]
 
 [phases.install]
 cmds = [
@@ -10,6 +10,7 @@ cmds = [
 
 [phases.build]
 cmds = [
+    "mkdir -p database && touch database/database.sqlite",
     "php artisan config:cache",
     "php artisan route:cache",
     "php artisan view:cache",
@@ -17,4 +18,4 @@ cmds = [
 ]
 
 [start]
-cmd = "php artisan serve --host=0.0.0.0 --port=$PORT"
+cmd = "bash -c 'envsubst \"${PORT}\" < docker/nginx.conf.template > /etc/nginx/nginx.conf && php-fpm -D && php artisan reverb:start --host=0.0.0.0 --port=8080 & nginx -g \"daemon off;\"'"

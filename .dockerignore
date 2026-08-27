@@ -26,3 +26,4 @@ database/database.sqlite
 *.swp
 *.swo
 *~
+docker/nginx.conf

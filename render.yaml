@@ -4,13 +4,7 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
-    buildCommand: |
-      composer install --optimize-autoloader --no-dev
-      npm ci && npm run build
-      php artisan config:cache
-      php artisan route:cache
-      php artisan view:cache
-      php artisan migrate --force
+    dockerContext: .
     envVars:
       - key: APP_KEY
         generateValue: true
@@ -22,13 +16,13 @@ services:
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
-        value: false
+        value: "false"
       - key: LOG_CHANNEL
         value: stderr
       - key: DB_CONNECTION
         value: sqlite
       - key: DB_DATABASE
-        value: database/database.sqlite
+        value: /var/www/html/database/database.sqlite
       - key: BROADCAST_CONNECTION
         value: reverb
       - key: QUEUE_CONNECTION
@@ -42,7 +36,7 @@ services:
       - key: REVERB_HOST
         value: 0.0.0.0
       - key: REVERB_PORT
-        value: 8080
+        value: "8080"
       - key: REVERB_SCHEME
         value: http
       - key: REVERB_PUBLIC_WS_URL
@@ -51,3 +45,13 @@ services:
         value: d620458570a991df270da6f309d52e3b
       - key: CLOUDFLARE_TURN_KEY_SECRET
         value: 2c362dbe9099c5fe1a7ec2e3b020d888eaaa8b54754239c21a586a5a2a8ffda7
+    disk:
+      name: sqlite-data
+      mountPath: /var/www/html/database
+      sizeGB: 1
+
+databases:
+  - name: meetroom-db
+    databaseName: meetroom
+    user: meetroom
+    plan: free
