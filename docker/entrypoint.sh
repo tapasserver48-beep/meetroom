@@ -1,43 +1,22 @@
 #!/bin/sh
 
-# Wait for database if using MySQL
-# (SQLite doesn't need this)
-
 # Create SQLite database if it doesn't exist
 mkdir -p /var/www/html/database
 touch /var/www/html/database/database.sqlite
 chmod 664 /var/www/html/database/database.sqlite
 
-# Ensure storage and bootstrap/cache directories exist and are writable
-mkdir -p /var/www/html/storage/logs /var/www/html/storage/framework/cache /var/www/html/storage/framework/sessions /var/www/html/storage/framework/views /var/www/html/bootstrap/cache
-chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+# Ensure ALL storage and cache directories exist with full permissions
+mkdir -p /var/www/html/storage/app/public
+mkdir -p /var/www/html/storage/framework/cache/data
+mkdir -p /var/www/html/storage/framework/sessions
+mkdir -p /var/www/html/storage/framework/testing
+mkdir -p /var/www/html/storage/framework/views
+mkdir -p /var/www/html/storage/logs
+mkdir -p /var/www/html/bootstrap/cache
+chmod -R 777 /var/www/html/storage
+chmod -R 777 /var/www/html/bootstrap/cache
 
-# Generate APP_KEY if not set or invalid
-if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
-    php artisan key:generate --force
-else
-    # Validate APP_KEY format (must be base64: + 32 bytes = 44 chars after base64:)
-    KEY_CHECK=$(php -r "
-        \$key = getenv('APP_KEY');
-        if (str_starts_with(\$key, 'base64:')) {
-            \$decoded = base64_decode(substr(\$key, 7), true);
-            if (\$decoded !== false && strlen(\$decoded) === 32) {
-                echo 'valid';
-            } else {
-                echo 'invalid';
-            }
-        } else {
-            echo 'invalid';
-        }
-    ")
-    if [ "$KEY_CHECK" != "valid" ]; then
-        echo "Invalid APP_KEY format, generating new one..."
-        php artisan key:generate --force
-    fi
-fi
-
-# Create .env from environment variables (Render injects these at runtime)
-# This ensures Render dashboard env vars take precedence over .env.example
+# Write .env FIRST so Laravel commands can read it
 cat > /var/www/html/.env <<EOF
 APP_NAME=MeetRoom
 APP_ENV=${APP_ENV:-production}
@@ -71,13 +50,19 @@ CLOUDFLARE_TURN_KEY_SECRET=${CLOUDFLARE_TURN_KEY_SECRET:-}
 LOG_CHANNEL=${LOG_CHANNEL:-stderr}
 EOF
 
-# Clear any cached config before regenerating
+# Now validate and fix APP_KEY if needed
+php artisan key:generate --force
+
+# Clear all cached config (stale cache causes 500)
 php artisan config:clear 2>/dev/null || true
+php artisan cache:clear 2>/dev/null || true
+php artisan route:clear 2>/dev/null || true
+php artisan view:clear 2>/dev/null || true
 
 # Run migrations
 php artisan migrate --force
 
-# Clear and cache configs
+# Cache everything for production
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
