@@ -296,7 +296,7 @@
 
         // Start REST polling FIRST — this is the reliable path
         setInterval(() => syncRoster(), 5000);
-        setInterval(pollSignals, 2000);
+        setInterval(pollSignals, 1000);
 
         await syncRoster();
         await announceHello();
@@ -494,7 +494,10 @@
 
         const pc = new RTCPeerConnection({
             iceServers,
-            iceCandidatePoolSize: 4,
+            iceCandidatePoolSize: 10,
+            iceTransportPolicy: 'all',
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require',
         });
 
         pc.onicecandidate = (e) => {
@@ -507,32 +510,30 @@
             }
         };
 
+        pc.onicecandidateerror = (e) => {
+            console.warn('[room] ICE candidate error for peer', peerId, e.errorCode, e.errorText);
+        };
+
         pc.ontrack = (e) => attachRemoteStream(peerId, e.streams[0]);
 
-        pc.onconnectionstatechange = () => {
-            const tile = document.getElementById(`remote-video-${peerId}`);
-            if (tile) {
-                let badge = tile.querySelector('.conn-status');
-                if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'conn-status absolute top-2 left-2 text-xs font-medium text-white bg-gray-900/80 px-2 py-1 rounded';
-                    tile.appendChild(badge);
-                }
-                if (pc.connectionState === 'connected') {
-                    badge.textContent = '';
-                    badge.classList.add('hidden');
-                } else if (['connecting', 'new'].includes(pc.connectionState)) {
-                    badge.textContent = 'Connecting...';
-                    badge.classList.remove('hidden');
-                } else if (pc.connectionState === 'failed') {
-                    badge.textContent = 'Reconnecting...';
-                    badge.classList.remove('hidden');
-                    // Self-heal: restart ICE
-                    try { pc.restartIce(); } catch (e) {}
-                    setTimeout(() => { if (peers.has(peerId) && pc.connectionState === 'failed') maybeOffer(peerId); }, 3000);
-                }
+        pc.oniceconnectionstatechange = () => {
+            console.log(`[room] peer ${peerId} ICE: ${pc.iceConnectionState}`);
+            if (pc.iceConnectionState === 'failed') {
+                console.log('[room] ICE failed for', peerId, '— restarting');
+                try { pc.restartIce(); } catch (e) {}
             }
-            console.log(`[room] peer ${peerId}: ${pc.connectionState}`);
+        };
+
+        pc.onconnectionstatechange = () => {
+            console.log(`[room] peer ${peerId} state: ${pc.connectionState}`);
+            if (pc.connectionState === 'failed') {
+                console.log('[room] connection failed, restarting ICE for', peerId);
+                try { pc.restartIce(); } catch (e) {}
+                // Remove stale peer so reconcilePeers creates a fresh one
+                peers.delete(peerId);
+                offeredTo.delete(peerId);
+                setTimeout(() => maybeOffer(peerId), 1000);
+            }
         };
 
         if (localStream) {
@@ -561,6 +562,13 @@
 
     async function handleOffer(msg) {
         try {
+            // If peer exists but is in a bad state, close it first
+            const existing = peers.get(msg.from);
+            if (existing && (existing.connectionState === 'closed' || existing.connectionState === 'failed')) {
+                existing.close();
+                peers.delete(msg.from);
+                offeredTo.delete(msg.from);
+            }
             const pc = createPeer(msg.from);
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.data.sdp }));
             flushPendingIce(msg.from);
@@ -591,8 +599,8 @@
             sdpMLineIndex: msg.data.sdpMLineIndex,
         });
 
-        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
-            try { await pc.addIceCandidate(candidate); } catch (e) { console.warn('ICE error:', e); }
+        if (pc && pc.remoteDescription && pc.remoteDescription.type && pc.connectionState !== 'closed') {
+            try { await pc.addIceCandidate(candidate); } catch (e) { console.warn('[room] ICE error:', e); }
         } else {
             if (!pendingIce.has(msg.from)) pendingIce.set(msg.from, []);
             pendingIce.get(msg.from).push(candidate);
@@ -788,12 +796,9 @@
                 if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
                 isScreenSharing = false;
                 document.getElementById('local-share-indicator').classList.add('hidden');
-                if (localStream && isCameraEnabled) {
-                    replaceVideoTrackForAll(localStream.getVideoTracks()[0] || null);
-                } else {
-                    replaceVideoTrackForAll(null);
-                }
-                localVideo.srcObject = localStream;
+                const camTrack = localStream && isCameraEnabled ? localStream.getVideoTracks()[0] : null;
+                replaceVideoTrackForAll(camTrack);
+                if (localStream) localVideo.srcObject = localStream;
             } else {
                 screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
                 const track = screenStream.getVideoTracks()[0];
@@ -811,9 +816,13 @@
     }
 
     function replaceVideoTrackForAll(track) {
-        peers.forEach(pc => {
-            const sender = pc.getSenders().find(s => s.track?.kind === 'video' || s.trackKind === 'video');
-            if (sender) sender.replaceTrack(track).catch(() => {});
+        peers.forEach((pc, peerId) => {
+            const senders = pc.getSenders().filter(s => s.track && s.track.kind === 'video');
+            senders.forEach(sender => {
+                sender.replaceTrack(track).catch(err => {
+                    console.warn('[room] replaceTrack failed for peer', peerId, err);
+                });
+            });
         });
     }
 
