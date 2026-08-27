@@ -67,10 +67,8 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload --optimize --no-dev
 # Test PHP and artisan
 RUN php -r "echo 'PHP OK';" && php artisan --version
 
-# Run Laravel build commands
-RUN php artisan config:cache && \
-    php artisan route:cache && \
-    php artisan view:cache
+# NOTE: Do NOT cache config/route/view here — APP_KEY isn't set yet during build.
+# Caching happens at runtime in entrypoint.sh after .env is written.
 
 # Copy nginx config template and entrypoint
 COPY docker/nginx.conf.template /etc/nginx/nginx.conf.template
