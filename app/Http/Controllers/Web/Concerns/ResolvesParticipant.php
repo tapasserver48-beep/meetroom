@@ -58,13 +58,24 @@ trait ResolvesParticipant
 
     /**
      * Participant that must exist and be joined, otherwise null.
+     *
+     * If the participant row exists but is no longer "joined" (e.g. it was
+     * reaped to "left" after a stale heartbeat when the tab was backgrounded
+     * and stopped polling), we auto re-admit them so the real-time session can
+     * recover without a full page reload. Without this the client gets stuck in
+     * a 403 loop: poll -> re-announce -> hello -> 403 -> poll ...
+     * Explicitly removed participants are NOT recovered.
      */
     protected function joinedParticipant(Meeting $meeting): ?MeetingParticipant
     {
         $participant = $this->currentParticipant($meeting);
 
-        if (!$participant || $participant->status !== 'joined') {
+        if (!$participant) {
             return null;
+        }
+
+        if ($participant->status !== 'joined' && $participant->status !== 'removed') {
+            $this->meetingService->admitParticipant($meeting, $participant);
         }
 
         return $participant;
