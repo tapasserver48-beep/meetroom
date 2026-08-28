@@ -3,13 +3,13 @@
 @php
     $publicHost = trim((string) config('meetroom.reverb.public_host')) ?: request()->getHost();
     $isHttps = request()->isSecure();
-    $reverbPort = (int) config('meetroom.reverb.port', 8080);
+    $hasPublicHost = trim((string) config('meetroom.reverb.public_host')) !== '';
     $echoConfig = [
         'key' => config('meetroom.reverb.key'),
         'wsHost' => $publicHost,
-        'wsPort' => $reverbPort,
-        'wssPort' => $reverbPort,
-        'forceTLS' => false,
+        'wsPort' => $hasPublicHost ? ($isHttps ? 443 : 80) : 8080,
+        'wssPort' => $hasPublicHost ? 443 : 8080,
+        'forceTLS' => $isHttps,
     ];
     $isHostUser = $participant->role === 'host' || $participant->role === 'cohost'
         || (auth()->check() && auth()->id() === $meeting->host_id);
@@ -322,11 +322,18 @@
             localStream.getAudioTracks().forEach(t => t.enabled = isMicEnabled);
             localStream.getVideoTracks().forEach(t => t.enabled = isCameraEnabled);
             localVideo.srcObject = localStream;
+            localVideo.play().catch(() => {
+                console.warn('[room] local video autoplay blocked, retrying muted');
+                localVideo.muted = true;
+                localVideo.play().catch(e => console.warn('[room] local video play failed:', e));
+            });
             updateLocalMediaUI();
+            console.log('[room] local media acquired:', localStream.getTracks().map(t => t.kind).join(', '));
         } catch (err) {
-            console.warn('Media unavailable, joining without devices:', err);
+            console.error('[room] getUserMedia failed:', err);
             isMicEnabled = false;
             isCameraEnabled = false;
+            localStream = null;
             updateLocalMediaUI();
         }
     }
@@ -342,7 +349,10 @@
 
     // ---- Signaling (REST-first, WebSocket optional) ----------------------------
     async function connectSignaling() {
-        // Try WebSocket first (fast, real-time)
+        // REST polling is the primary transport. Mark connected immediately.
+        setConnectionStatus('connected');
+
+        // Try WebSocket as a bonus (faster real-time)
         try {
             window.echo = await window.initEcho(roomConfig.echo);
             channel = window.echo.join(`meeting.${roomConfig.meetingId}`);
@@ -351,29 +361,23 @@
             bindRoomEvents();
 
             channel.subscribed(async () => {
-                console.log('[room] WS subscribed');
-                setConnectionStatus('connected');
+                console.log('[room] WS subscribed — real-time signaling active');
             });
-
-            // If WS connects within 5s, great. Otherwise fall back to REST.
-            setTimeout(() => {
-                if (statusText.textContent !== 'Connected') {
-                    console.log('[room] WS slow — using REST polling');
-                    setConnectionStatus('connected');
-                }
-            }, 5000);
         } catch (err) {
-            console.warn('WS init failed, using REST polling:', err);
-            setConnectionStatus('connected');
+            console.warn('[room] WS init failed, using REST-only mode:', err);
         }
     }
 
     function bindConnectionState() {
         const conn = window.echo.connector.pusher.connection;
-        const map = { connected: 'connected', connecting: 'reconnecting', uninitialized: 'reconnecting', unavailable: 'failed', failed: 'failed', disconnected: 'disconnected' };
         conn.bind('state_change', (states) => {
             console.log('[room] WS state:', states.current);
-            setConnectionStatus(map[states.current] || 'reconnecting');
+            // Only show WS-specific states if we haven't established REST connection yet.
+            // REST polling is the primary transport — WS is a bonus.
+            if (states.current === 'connected') {
+                setConnectionStatus('connected');
+            }
+            // Do NOT override to reconnecting/failed — REST is still working.
         });
     }
 
@@ -710,8 +714,17 @@
         tile.querySelector('.absolute.bottom-2 span').textContent = info.name;
 
         const video = tile.querySelector('video');
+        const placeholder = tile.querySelector('.video-placeholder');
         video.addEventListener('loadedmetadata', () => {
-            tile.querySelector('.video-placeholder').style.display = 'none';
+            placeholder.style.display = 'none';
+        });
+        video.addEventListener('playing', () => {
+            placeholder.style.display = 'none';
+        });
+        video.addEventListener('pause', () => {
+            if (video.srcObject && video.srcObject.getTracks().some(t => t.readyState === 'live')) {
+                video.play().catch(() => {});
+            }
         });
 
         emptyState.style.display = 'none';
@@ -724,11 +737,15 @@
         const tile = ensureRemoteTile(peerId);
         const video = tile.querySelector('video');
         video.srcObject = stream;
-        video.play().catch(() => {
-            // Autoplay policy: retry muted, let user unmute via click
-            console.warn('[room] autoplay blocked — retrying muted for peer', peerId);
+        video.play().then(() => {
+            tile.querySelector('.video-placeholder').style.display = 'none';
+        }).catch(() => {
+            // Autoplay blocked — retry muted, let user unmute via click
+            console.warn('[room] autoplay blocked for peer', peerId, '— retrying muted');
             video.muted = true;
-            video.play().catch(() => {});
+            video.play().then(() => {
+                tile.querySelector('.video-placeholder').style.display = 'none';
+            }).catch(() => {});
         });
     }
 
@@ -816,7 +833,13 @@
 
     function toggleCamera() {
         isCameraEnabled = !isCameraEnabled;
-        if (localStream) localStream.getVideoTracks().forEach(t => t.enabled = isCameraEnabled);
+        if (localStream) {
+            localStream.getVideoTracks().forEach(t => t.enabled = isCameraEnabled);
+            if (isCameraEnabled) {
+                localVideo.srcObject = localStream;
+                localVideo.play().catch(() => {});
+            }
+        }
         broadcastMediaStatus();
     }
 
