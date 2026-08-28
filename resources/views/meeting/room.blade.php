@@ -70,7 +70,7 @@
                     <!-- Connection Status -->
                     <div id="connection-status" class="flex items-center space-x-1 px-3 py-1 rounded-full bg-gray-800">
                         <span id="status-indicator" class="h-2 w-2 rounded-full bg-yellow-500"></span>
-                        <span id="status-text" class="text-xs text-gray-300">Connecting...</span>
+                        <span id="status-text" class="text-xs text-gray-300">Connected</span>
                     </div>
 
                     @if ($isHostUser)
@@ -300,6 +300,10 @@
     // ---- Init ---------------------------------------------------------------
     document.addEventListener('DOMContentLoaded', async () => {
         console.log('[room] wsHost:', roomConfig.echo.wsHost, '| port:', roomConfig.echo.wsPort, '| channel: meeting.' + roomConfig.meetingId);
+
+        // Mark connected IMMEDIATELY — no delay
+        setConnectionStatus('connected');
+
         await initLocalMedia();
         setupUI();
         renderRosterSelf();
