@@ -35,6 +35,9 @@ RUN docker-php-ext-install gd
 RUN docker-php-ext-install mbstring
 RUN docker-php-ext-install xml
 RUN docker-php-ext-install bcmath
+RUN docker-php-ext-install pcntl
+RUN docker-php-ext-install posix
+RUN docker-php-ext-install sockets
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

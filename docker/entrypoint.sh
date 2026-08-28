@@ -91,32 +91,34 @@ envsubst '${PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 # Start PHP-FPM in background
 php-fpm -D
 
-# Start Reverb WebSocket server in background
-php artisan reverb:start --host=0.0.0.0 --port=8080 &
-REVERB_PID=$!
-
-# Wait for Reverb to accept connections (WebSocket server — check TCP port)
-echo "Waiting for Reverb WebSocket server on port 8080..."
-for i in $(seq 1 20); do
-    # Try to open a TCP connection to Reverb's port
-    if (echo | timeout 2 nc 127.0.0.1 8080 2>/dev/null); then
-        echo "Reverb is ready on port 8080!"
-        break
-    fi
-    # Fallback: try HTTP request (Reverb responds to GET /)
-    if (curl -sf --max-time 2 http://127.0.0.1:8080/ >/dev/null 2>&1); then
-        echo "Reverb is ready (HTTP check passed)!"
-        break
-    fi
-    if ! kill -0 $REVERB_PID 2>/dev/null; then
-        echo "Reverb process died — restarting..."
-        php artisan reverb:start --host=0.0.0.0 --port=8080 &
+# Supervise the Reverb WebSocket server: start it, log its output to stderr
+# (visible in Render logs), and automatically restart it if it ever exits.
+start_reverb() {
+    while true; do
+        echo "[entrypoint] Starting Reverb WebSocket server on 0.0.0.0:8080..."
+        php artisan reverb:start --host=0.0.0.0 --port=8080 2>&1 &
         REVERB_PID=$!
+        wait $REVERB_PID
+        echo "[entrypoint] Reverb exited with code $? - restarting in 2s..."
+        sleep 2
+    done
+}
+start_reverb &
+
+# Wait until Reverb is actually accepting connections on 127.0.0.1:8080.
+# Use curl with any HTTP status (even 426/400) as proof the port is open,
+# since Reverb answers the bare GET / with a non-2xx response.
+echo "Waiting for Reverb WebSocket server on port 8080..."
+for i in $(seq 1 30); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8080/ 2>/dev/null || true)
+    if [ -n "$code" ] && [ "$code" != "000" ]; then
+        echo "Reverb is ready on port 8080 (HTTP $code)!"
+        break
     fi
     sleep 1
 done
 
-# Extra safety: give Reverb 2 more seconds to fully initialize after port opens
+# Extra safety: give Reverb a moment to fully initialize after the port opens
 sleep 2
 echo "Starting nginx..."
 
