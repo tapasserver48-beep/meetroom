@@ -89,3 +89,8 @@ Route::get('/meetings/{meeting}/room/waiting-list', [RoomController::class, 'wai
 // Join by meeting code (public — guests join with just a name)
 Route::get('/join/{meetingCode}', [MeetingController::class, 'joinByCode'])->name('meetings.join-by-code');
 Route::post('/join/{meetingCode}', [MeetingController::class, 'joinByCodePost'])->name('meetings.join-by-code.post');
+
+// CSRF token refresh — no auth required, returns a fresh token in meta + cookie
+Route::get('/csrf-token', function () {
+    return response()->json(['token' => csrf_token()]);
+});
