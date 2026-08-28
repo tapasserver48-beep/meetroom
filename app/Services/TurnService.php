@@ -60,14 +60,43 @@ class TurnService
 
             if ($response->successful()) {
                 $data = $response->json();
-                if (isset($data['iceServers']) && is_array($data['iceServers']) && count($data['iceServers']) > 0) {
-                    \Log::info('[TurnService] Got TURN credentials', [
-                        'server_count' => count($data['iceServers']),
-                        'servers' => collect($data['iceServers'])->map(fn($s) => $s['urls'] ?? [])->toArray(),
-                    ]);
-                    return $data['iceServers'];
+
+                // Cloudflare returns iceServers in TWO shapes depending on version:
+                //   • an array:  [ { urls, username, credential }, ... ]
+                //   • a single object: { urls, username, credential }
+                // It may also be wrapped as { result: { iceServers: ... } }.
+                // Normalize everything into a flat list of { urls, username, credential }.
+                $servers = $data['iceServers']
+                    ?? ($data['result']['iceServers'] ?? null)
+                    ?? ($data['result'] ?? null);
+
+                if ($servers !== null) {
+                    // Single-object shape -> wrap in an array.
+                    if (isset($servers['urls'])) {
+                        $servers = [$servers];
+                    }
+
+                    if (is_array($servers)) {
+                        $normalized = collect($servers)
+                            ->filter(fn($s) => isset($s['urls']))
+                            ->map(fn($s) => [
+                                'urls' => $s['urls'],
+                                'username' => $s['username'] ?? null,
+                                'credential' => $s['credential'] ?? null,
+                            ])
+                            ->values()
+                            ->toArray();
+
+                        if (count($normalized) > 0) {
+                            \Log::info('[TurnService] Got TURN credentials', [
+                                'server_count' => count($normalized),
+                                'servers' => collect($normalized)->map(fn($s) => $s['urls'])->toArray(),
+                            ]);
+                            return $normalized;
+                        }
+                    }
                 }
-                \Log::warning('[TurnService] Cloudflare returned success but no iceServers in response', ['data' => $data]);
+                \Log::warning('[TurnService] Cloudflare returned success but no usable iceServers in response', ['data' => $data]);
             } else {
                 \Log::error('[TurnService] Cloudflare API failed', [
                     'status' => $response->status(),

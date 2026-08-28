@@ -576,6 +576,10 @@
         if (typeof iceServers === 'string') {
             try { iceServers = JSON.parse(iceServers); } catch (e) { iceServers = null; }
         }
+        // Cloudflare may return a single object instead of an array — normalize.
+        if (iceServers && !Array.isArray(iceServers) && iceServers.urls) {
+            iceServers = [iceServers];
+        }
         if (!iceServers || !Array.isArray(iceServers) || iceServers.length === 0) {
             iceServers = [
                 { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
