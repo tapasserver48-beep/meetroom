@@ -7,13 +7,19 @@ window.axios = axios;
 window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 window.axios.defaults.withCredentials = true;
 
-// Get CSRF token
+// Get CSRF token from meta tag OR cookie
 const token = document.head.querySelector('meta[name="csrf-token"]');
 
 if (token) {
     window.axios.defaults.headers.common['X-CSRF-TOKEN'] = token.content;
 } else {
-    console.error('CSRF token not found: https://laravel.com/docs/csrf#csrf-x-csrf-token');
+    // Fallback: read from cookie
+    const cookieMatch = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
+    if (cookieMatch) {
+        window.axios.defaults.headers.common['X-CSRF-TOKEN'] = decodeURIComponent(cookieMatch[1]);
+    } else {
+        console.warn('CSRF token not found — chat/mutations may fail until page reload');
+    }
 }
 
 // Handle axios errors globally

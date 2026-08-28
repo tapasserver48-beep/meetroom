@@ -12,12 +12,30 @@ chmod -R 777 /var/www/html/storage
 chmod -R 777 /var/www/html/bootstrap/cache
 
 # Write .env FIRST so Laravel commands can read it
+# Render's fromService property: host returns only the subdomain (e.g. "meetroom-xxxx").
+# We need to construct the full URLs here.
+
+# Build APP_URL with protocol
+RENDER_HOST=${APP_URL:-localhost}
+if echo "$RENDER_HOST" | grep -q "^http"; then
+    # Already has protocol
+    FULL_APP_URL="$RENDER_HOST"
+    WS_HOST=$(echo "$RENDER_HOST" | sed 's|https\?://||' | sed 's|/.*||')
+else
+    # Just a hostname — add https
+    FULL_APP_URL="https://${RENDER_HOST}"
+    WS_HOST="$RENDER_HOST"
+fi
+
+# Build full WebSocket URL (wss://hostname)
+REVERB_WS_URL="wss://${WS_HOST}"
+
 cat > /var/www/html/.env <<EOF
 APP_NAME=MeetRoom
 APP_ENV=${APP_ENV:-production}
 APP_KEY=${APP_KEY}
 APP_DEBUG=${APP_DEBUG:-false}
-APP_URL=${APP_URL}
+APP_URL=${FULL_APP_URL}
 
 DB_CONNECTION=pgsql
 DB_HOST=${DB_HOST}
@@ -41,7 +59,7 @@ REVERB_APP_SECRET=${REVERB_APP_SECRET:-local}
 REVERB_HOST=${REVERB_HOST:-127.0.0.1}
 REVERB_PORT=${REVERB_PORT:-8080}
 REVERB_SCHEME=${REVERB_SCHEME:-http}
-REVERB_PUBLIC_WS_URL=${REVERB_PUBLIC_WS_URL:-}
+REVERB_PUBLIC_WS_URL=${REVERB_WS_URL}
 
 CLOUDFLARE_TURN_KEY_ID=${CLOUDFLARE_TURN_KEY_ID:-}
 CLOUDFLARE_TURN_KEY_SECRET=${CLOUDFLARE_TURN_KEY_SECRET:-}

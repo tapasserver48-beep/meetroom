@@ -1,16 +1,26 @@
 @extends('layouts.app')
 
 @php
-    $publicHost = trim((string) config('meetroom.reverb.public_host')) ?: request()->getHost();
+    $rawPublicHost = trim((string) config('meetroom.reverb.public_host'));
     $isHttps = request()->isSecure();
-    $hasPublicHost = trim((string) config('meetroom.reverb.public_host')) !== '';
     $echoConfig = [
         'key' => config('meetroom.reverb.key'),
-        'wsHost' => $publicHost,
-        'wsPort' => $hasPublicHost ? ($isHttps ? 443 : 80) : 8080,
-        'wssPort' => $hasPublicHost ? 443 : 8080,
-        'forceTLS' => $isHttps,
     ];
+    if ($rawPublicHost !== '' && $rawPublicHost !== '/') {
+        // REVERB_PUBLIC_WS_URL may be a full URL (wss://host) or just a hostname
+        $parsed = parse_url($rawPublicHost);
+        $echoConfig['wsHost'] = $parsed['host'] ?? $rawPublicHost;
+        $echoConfig['wsPort'] = $parsed['port'] ?? ($isHttps ? 443 : 80);
+        $echoConfig['wssPort'] = $parsed['port'] ?? 443;
+        $echoConfig['forceTLS'] = ($parsed['scheme'] ?? 'https') === 'wss' || $isHttps;
+    } else {
+        // Local dev: connect directly to Reverb on internal port
+        $echoConfig['wsHost'] = request()->getHost();
+        $echoConfig['wsPort'] = 8080;
+        $echoConfig['wssPort'] = 8080;
+        $echoConfig['forceTLS'] = $isHttps;
+    }
+
     $isHostUser = $participant->role === 'host' || $participant->role === 'cohost'
         || (auth()->check() && auth()->id() === $meeting->host_id);
     $roomConfig = [
