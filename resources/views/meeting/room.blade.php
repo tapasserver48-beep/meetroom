@@ -343,10 +343,21 @@
             localStream.getVideoTracks().forEach(t => t.enabled = isCameraEnabled);
 
             localVideo.muted = true;
+            localVideo.playsInline = true;
+            localVideo.autoplay = true;
             localVideo.srcObject = localStream;
+
+            // Show preview immediately — don't wait for onloadeddata which may never fire if muted
+            if (isCameraEnabled && localStream.getVideoTracks().some(t => t.enabled && t.readyState === 'live')) {
+                localVideo.style.display = 'block';
+                localVideoPlaceholder.style.display = 'none';
+            }
 
             await localVideo.play().catch(e => {
                 console.warn('[room] play() failed:', e.name, e.message);
+                // Autoplay may be blocked — still show the element, next user gesture will trigger play
+                localVideo.style.display = 'block';
+                localVideoPlaceholder.style.display = 'none';
             });
 
             localVideo.onloadeddata = () => {
@@ -380,6 +391,9 @@
                     localVideo.srcObject = null;
                     localVideo.srcObject = localStream;
                     localVideo.play().catch(() => {});
+                    // Force visible even if readyState still low (some browsers report 0 briefly)
+                    localVideo.style.display = 'block';
+                    localVideoPlaceholder.style.display = 'none';
                 }
             }, 2000);
         } catch (err) {
@@ -581,12 +595,21 @@
             iceServers = [iceServers];
         }
         if (!iceServers || !Array.isArray(iceServers) || iceServers.length === 0) {
+            // Render-native fallback: Google STUN + free public TURN (no Cloudflare needed)
             iceServers = [
                 { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
                 { urls: 'stun:global.stun.twilio.com:3478' },
-                { urls: 'stun:stun.nextcloud.com:443' },
+                {
+                    urls: [
+                        'turn:openrelay.metered.ca:80',
+                        'turn:openrelay.metered.ca:443',
+                        'turn:openrelay.metered.ca:443?transport=tcp',
+                    ],
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject',
+                },
             ];
         }
 
@@ -608,7 +631,9 @@
         };
 
         pc.onicecandidateerror = (e) => {
-            console.warn('[room] ICE candidate error for peer', peerId, ':', e.errorCode, e.errorText);
+            // 701 "Address not associated..." is benign mDNS host-candidate noise — ignore it
+            if (e.errorCode === 701 && String(e.errorText || '').includes('Address not associated')) return;
+            console.warn('[room] ICE candidate error for peer', peerId, ':', e.errorCode, e.errorText, e.url || '');
         };
 
         pc.oniceconnectionstatechange = () => {
