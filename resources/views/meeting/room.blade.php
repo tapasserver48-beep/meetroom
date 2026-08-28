@@ -1,25 +1,16 @@
 @extends('layouts.app')
 
 @php
-    $rawPublicHost = trim((string) config('meetroom.reverb.public_host'));
+    // Use the actual request hostname — this is always correct on Render
+    $host = request()->getHost();
     $isHttps = request()->isSecure();
     $echoConfig = [
-        'key' => config('meetroom.reverb.key'),
+        'key'      => config('meetroom.reverb.key'),
+        'wsHost'   => $host,
+        'wsPort'   => $isHttps ? 443 : 80,
+        'wssPort'  => 443,
+        'forceTLS' => $isHttps,
     ];
-    if ($rawPublicHost !== '' && $rawPublicHost !== '/') {
-        // REVERB_PUBLIC_WS_URL may be a full URL (wss://host) or just a hostname
-        $parsed = parse_url($rawPublicHost);
-        $echoConfig['wsHost'] = $parsed['host'] ?? $rawPublicHost;
-        $echoConfig['wsPort'] = $parsed['port'] ?? ($isHttps ? 443 : 80);
-        $echoConfig['wssPort'] = $parsed['port'] ?? 443;
-        $echoConfig['forceTLS'] = ($parsed['scheme'] ?? 'https') === 'wss' || $isHttps;
-    } else {
-        // Local dev: connect directly to Reverb on internal port
-        $echoConfig['wsHost'] = request()->getHost();
-        $echoConfig['wsPort'] = 8080;
-        $echoConfig['wssPort'] = 8080;
-        $echoConfig['forceTLS'] = $isHttps;
-    }
 
     $isHostUser = $participant->role === 'host' || $participant->role === 'cohost'
         || (auth()->check() && auth()->id() === $meeting->host_id);
