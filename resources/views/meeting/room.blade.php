@@ -627,6 +627,7 @@
         const pc = new RTCPeerConnection({
             iceServers,
             iceCandidatePoolSize: 10,
+            sdpSemantics: 'unified-plan',
         });
 
         pc.onicecandidate = (e) => {
@@ -735,14 +736,21 @@
                 }
             }
             const pc = createPeer(msg.from);
-            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.data.sdp }));
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.data.sdp }));
+            } catch (e) {
+                console.warn('[room] setRemoteDescription offer failed, trying SDP fix for', msg.from, e.message);
+                // Workaround: strip the problematic a=ssrc msid lines that some Plan-B offers contain
+                let fixedSdp = msg.data.sdp.replace(/^a=ssrc:.* msid:.*\r\n/gm, '');
+                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: fixedSdp }));
+            }
             flushPendingIce(msg.from);
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             await postSignal(msg.from, 'answer', { sdp: pc.localDescription.sdp, type: 'answer' });
             console.log('[room] sent answer to peer', msg.from);
         } catch (err) {
-            console.warn('[room] handleOffer error:', err);
+            console.warn('[room] handleOffer error for', msg.from, ':', err, 'SDP head:', String(msg.data.sdp).slice(0, 400));
         }
     }
 
