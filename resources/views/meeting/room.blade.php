@@ -740,8 +740,14 @@
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.data.sdp }));
             } catch (e) {
                 console.warn('[room] setRemoteDescription offer failed, trying SDP fix for', msg.from, e.message);
-                // Workaround: strip the problematic a=ssrc msid lines that some Plan-B offers contain
-                let fixedSdp = msg.data.sdp.replace(/^a=ssrc:.* msid:.*\r\n/gm, '');
+                // Old Plan-B offers contain a=ssrc ... msid:stream track which Unified-Plan rejects.
+                // Strip those lines (handle both \r\n and \n) and retry.
+                let fixedSdp = msg.data.sdp.replace(/^a=ssrc:[^\r\n]*\s+msid:[^\r\n]*\r?\n/gm, '');
+                // Fallback: if still contains the bad line, remove any a=ssrc with msid substring
+                if (fixedSdp.includes(' msid:')) {
+                    fixedSdp = fixedSdp.replace(/^a=ssrc:.*msid:.*\r?\n/gm, '');
+                }
+                console.log('[room] retrying setRemoteDescription with fixed SDP for', msg.from, 'removed', (msg.data.sdp.match(/^a=ssrc:.*msid:/gm) || []).length, 'lines');
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: fixedSdp }));
             }
             flushPendingIce(msg.from);
@@ -759,10 +765,19 @@
         try {
             const pc = peers.get(msg.from);
             if (!pc) return;
-            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.data.sdp }));
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.data.sdp }));
+            } catch (e) {
+                console.warn('[room] setRemoteDescription answer failed, trying SDP fix for', msg.from, e.message);
+                let fixedSdp = msg.data.sdp.replace(/^a=ssrc:[^\r\n]*\s+msid:[^\r\n]*\r?\n/gm, '');
+                if (fixedSdp.includes(' msid:')) {
+                    fixedSdp = fixedSdp.replace(/^a=ssrc:.*msid:.*\r?\n/gm, '');
+                }
+                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: fixedSdp }));
+            }
             flushPendingIce(msg.from);
         } catch (err) {
-            console.warn('[room] handleAnswer error:', err);
+            console.warn('[room] handleAnswer error for', msg.from, ':', err, 'SDP head:', String(msg.data.sdp).slice(0, 400));
         }
     }
 
