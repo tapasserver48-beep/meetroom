@@ -319,18 +319,60 @@
                 video: { width: { ideal: 1280 }, height: { ideal: 720 } }
             };
             localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log('[room] getUserMedia OK — tracks:', localStream.getTracks().map(t => `${t.kind}:${t.readyState}:${t.enabled}`).join(', '));
+
             localStream.getAudioTracks().forEach(t => t.enabled = isMicEnabled);
             localStream.getVideoTracks().forEach(t => t.enabled = isCameraEnabled);
+
+            // Always mute locally to guarantee autoplay works
+            localVideo.muted = true;
             localVideo.srcObject = localStream;
-            localVideo.play().catch(() => {
-                console.warn('[room] local video autoplay blocked, retrying muted');
-                localVideo.muted = true;
-                localVideo.play().catch(e => console.warn('[room] local video play failed:', e));
+
+            // Force play — muted video always succeeds
+            await localVideo.play().catch(e => {
+                console.warn('[room] play() failed, retrying:', e);
             });
+
+            // Ensure video is actually rendering
+            localVideo.onloadeddata = () => {
+                console.log('[room] local video loadeddata — dimensions:', localVideo.videoWidth, 'x', localVideo.videoHeight);
+                localVideoPlaceholder.style.display = 'none';
+                localVideo.style.display = 'block';
+            };
+
+            localVideo.onplaying = () => {
+                console.log('[room] local video playing');
+                localVideoPlaceholder.style.display = 'none';
+                localVideo.style.display = 'block';
+            };
+
+            // If video track unmutes (some browsers do this), force play again
+            localStream.getVideoTracks().forEach(track => {
+                track.onunmute = () => {
+                    console.log('[room] video track unmuted');
+                    if (isCameraEnabled) {
+                        localVideo.srcObject = localStream;
+                        localVideo.play().catch(() => {});
+                        localVideoPlaceholder.style.display = 'none';
+                        localVideo.style.display = 'block';
+                    }
+                };
+            });
+
             updateLocalMediaUI();
-            console.log('[room] local media acquired:', localStream.getTracks().map(t => t.kind).join(', '));
+
+            // Failsafe: if video still blank after 2s, retry everything
+            setTimeout(() => {
+                if (isCameraEnabled && localStream && localVideo.readyState < 2) {
+                    console.warn('[room] video still not ready after 2s — retrying');
+                    localVideo.muted = true;
+                    localVideo.srcObject = null;
+                    localVideo.srcObject = localStream;
+                    localVideo.play().catch(() => {});
+                }
+            }, 2000);
         } catch (err) {
-            console.error('[room] getUserMedia failed:', err);
+            console.error('[room] getUserMedia FAILED:', err.name, err.message);
             isMicEnabled = false;
             isCameraEnabled = false;
             localStream = null;
@@ -339,8 +381,13 @@
     }
 
     function updateLocalMediaUI() {
-        localVideo.style.display = (isCameraEnabled && localStream) ? 'block' : 'none';
-        localVideoPlaceholder.style.display = (isCameraEnabled && localStream) ? 'none' : 'flex';
+        if (isCameraEnabled && localStream) {
+            localVideo.style.display = 'block';
+            localVideoPlaceholder.style.display = 'none';
+        } else {
+            localVideo.style.display = 'none';
+            localVideoPlaceholder.style.display = 'flex';
+        }
         document.getElementById('mic-label').textContent = isMicEnabled ? 'Mute' : 'Unmute';
         document.getElementById('camera-label').textContent = isCameraEnabled ? 'Video' : 'Video Off';
         document.getElementById('mic-btn').classList.toggle('bg-red-600', !isMicEnabled);
@@ -736,15 +783,28 @@
     function attachRemoteStream(peerId, stream) {
         const tile = ensureRemoteTile(peerId);
         const video = tile.querySelector('video');
+        const placeholder = tile.querySelector('.video-placeholder');
+
+        // Always mute remote video locally (required for autoplay)
+        video.muted = true;
         video.srcObject = stream;
+
+        video.onloadeddata = () => {
+            console.log('[room] remote video loaded for peer', peerId, video.videoWidth, 'x', video.videoHeight);
+            placeholder.style.display = 'none';
+        };
+
+        video.onplaying = () => {
+            placeholder.style.display = 'none';
+        };
+
         video.play().then(() => {
-            tile.querySelector('.video-placeholder').style.display = 'none';
+            placeholder.style.display = 'none';
         }).catch(() => {
-            // Autoplay blocked — retry muted, let user unmute via click
-            console.warn('[room] autoplay blocked for peer', peerId, '— retrying muted');
+            console.warn('[room] autoplay blocked for peer', peerId, '— retrying');
             video.muted = true;
             video.play().then(() => {
-                tile.querySelector('.video-placeholder').style.display = 'none';
+                placeholder.style.display = 'none';
             }).catch(() => {});
         });
     }
@@ -835,11 +895,15 @@
         isCameraEnabled = !isCameraEnabled;
         if (localStream) {
             localStream.getVideoTracks().forEach(t => t.enabled = isCameraEnabled);
-            if (isCameraEnabled) {
-                localVideo.srcObject = localStream;
-                localVideo.play().catch(() => {});
-            }
         }
+        if (isCameraEnabled && localStream) {
+            localVideo.muted = true;
+            localVideo.srcObject = localStream;
+            localVideo.play().catch(() => {});
+            localVideoPlaceholder.style.display = 'none';
+            localVideo.style.display = 'block';
+        }
+        updateLocalMediaUI();
         broadcastMediaStatus();
     }
 
