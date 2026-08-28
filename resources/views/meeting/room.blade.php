@@ -575,12 +575,14 @@
         if (!iceServers || !Array.isArray(iceServers) || iceServers.length === 0) {
             iceServers = [
                 { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
                 { urls: 'stun:global.stun.twilio.com:3478' },
                 { urls: 'stun:stun.nextcloud.com:443' },
             ];
         }
 
-        console.log('[room] creating peer for', peerId, 'with', iceServers.length, 'ICE servers');
+        console.log('[room] creating peer for', peerId, 'with ICE servers:', JSON.stringify(iceServers.map(s => s.urls)));
 
         const pc = new RTCPeerConnection({
             iceServers,
@@ -598,29 +600,32 @@
         };
 
         pc.onicecandidateerror = (e) => {
-            console.warn('[room] ICE candidate error for peer', peerId, e.errorCode, e.errorText);
+            console.warn('[room] ICE candidate error for peer', peerId, ':', e.errorCode, e.errorText);
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            const state = pc.iceConnectionState;
+            console.log(`[room] peer ${peerId} ICE state: ${state}`);
+            if (state === 'connected' || state === 'completed') {
+                console.log(`[room] peer ${peerId} ICE connected — stream flowing`);
+            } else if (state === 'failed') {
+                console.warn(`[room] peer ${peerId} ICE FAILED — attempting restart`);
+                try { pc.restartIce(); } catch (e) {
+                    console.warn('[room] ICE restart failed:', e.message);
+                }
+            } else if (state === 'disconnected') {
+                console.warn(`[room] peer ${peerId} ICE disconnected — waiting for recovery`);
+            }
+        };
+
+        pc.onicegatheringstatechange = () => {
+            console.log(`[room] peer ${peerId} ICE gathering: ${pc.iceGatheringState}`);
         };
 
         pc.ontrack = (e) => {
             console.log('[room] ontrack from peer', peerId, 'kind:', e.track.kind, 'streams:', e.streams.length);
             if (e.streams && e.streams[0]) {
                 attachRemoteStream(peerId, e.streams[0]);
-            }
-        };
-
-        pc.oniceconnectionstatechange = () => {
-            console.log(`[room] peer ${peerId} ICE: ${pc.iceConnectionState}`);
-            if (pc.iceConnectionState === 'failed') {
-                console.log('[room] ICE failed for', peerId, '— restarting');
-                try { pc.restartIce(); } catch (e) {}
-            }
-            if (pc.iceConnectionState === 'disconnected') {
-                console.log('[room] ICE disconnected for', peerId, '— will retry');
-                setTimeout(() => {
-                    if (pc.connectionState !== 'closed') {
-                        try { pc.restartIce(); } catch (e) {}
-                    }
-                }, 2000);
             }
         };
 
@@ -1057,8 +1062,10 @@
 
         container.innerHTML = '';
         if (list.length === 0) {
-            empty.classList.remove('hidden');
-            container.appendChild(empty);
+            if (empty) {
+                empty.classList.remove('hidden');
+                container.appendChild(empty);
+            }
             return;
         }
 

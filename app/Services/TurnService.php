@@ -14,8 +14,8 @@ class TurnService
 
     public function __construct()
     {
-        $this->keyId = config('services.cloudflare.turn_key_id');
-        $this->keySecret = config('services.cloudflare.turn_key_secret');
+        $this->keyId = (string) config('services.cloudflare.turn_key_id', '');
+        $this->keySecret = (string) config('services.cloudflare.turn_key_secret', '');
     }
 
     /**
@@ -33,27 +33,55 @@ class TurnService
     protected function fetchIceServers(int $ttl): array
     {
         if (!$this->keyId || !$this->keySecret) {
+            \Log::warning('[TurnService] Missing Cloudflare TURN credentials — using STUN-only fallback');
             return $this->getStunOnlyServers();
         }
 
         try {
+            $url = "https://rtc.live.cloudflare.com/v1/turn/keys/{$this->keyId}/credentials/generate-ice-servers";
+
+            \Log::info('[TurnService] Fetching TURN credentials from Cloudflare', [
+                'key_id' => $this->keyId,
+                'url' => $url,
+                'ttl' => $ttl,
+            ]);
+
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->keySecret,
                 'Content-Type' => 'application/json',
-            ])->post("https://rtc.live.cloudflare.com/v1/turn/keys/{$this->keyId}/credentials/generate-ice-servers", [
+            ])->timeout(10)->post($url, [
                 'ttl' => $ttl,
+            ]);
+
+            \Log::info('[TurnService] Cloudflare API response', [
+                'status' => $response->status(),
+                'body' => $response->body(),
             ]);
 
             if ($response->successful()) {
                 $data = $response->json();
-                if (isset($data['iceServers']) && is_array($data['iceServers'])) {
+                if (isset($data['iceServers']) && is_array($data['iceServers']) && count($data['iceServers']) > 0) {
+                    \Log::info('[TurnService] Got TURN credentials', [
+                        'server_count' => count($data['iceServers']),
+                        'servers' => collect($data['iceServers'])->map(fn($s) => $s['urls'] ?? [])->toArray(),
+                    ]);
                     return $data['iceServers'];
                 }
+                \Log::warning('[TurnService] Cloudflare returned success but no iceServers in response', ['data' => $data]);
+            } else {
+                \Log::error('[TurnService] Cloudflare API failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
             }
         } catch (\Exception $e) {
-            \Log::error('Failed to fetch TURN credentials: ' . $e->getMessage());
+            \Log::error('[TurnService] Exception fetching TURN credentials', [
+                'message' => $e->getMessage(),
+                'code' => $e->getCode(),
+            ]);
         }
 
+        \Log::warning('[TurnService] Falling back to STUN-only servers');
         return $this->getStunOnlyServers();
     }
 
@@ -64,7 +92,16 @@ class TurnService
                 'urls' => [
                     'stun:stun.l.google.com:19302',
                     'stun:stun1.l.google.com:19302',
+                    'stun:stun2.l.google.com:19302',
+                    'stun:stun3.l.google.com:19302',
+                    'stun:stun4.l.google.com:19302',
                 ],
+            ],
+            [
+                'urls' => 'stun:global.stun.twilio.com:3478',
+            ],
+            [
+                'urls' => 'stun:stun.nextcloud.com:443',
             ],
         ];
     }
