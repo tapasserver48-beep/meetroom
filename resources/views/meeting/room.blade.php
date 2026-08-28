@@ -562,12 +562,11 @@
             ];
         }
 
+        console.log('[room] creating peer for', peerId, 'with', iceServers.length, 'ICE servers');
+
         const pc = new RTCPeerConnection({
             iceServers,
             iceCandidatePoolSize: 10,
-            iceTransportPolicy: 'all',
-            bundlePolicy: 'max-bundle',
-            rtcpMuxPolicy: 'require',
         });
 
         pc.onicecandidate = (e) => {
@@ -584,7 +583,12 @@
             console.warn('[room] ICE candidate error for peer', peerId, e.errorCode, e.errorText);
         };
 
-        pc.ontrack = (e) => attachRemoteStream(peerId, e.streams[0]);
+        pc.ontrack = (e) => {
+            console.log('[room] ontrack from peer', peerId, 'kind:', e.track.kind, 'streams:', e.streams.length);
+            if (e.streams && e.streams[0]) {
+                attachRemoteStream(peerId, e.streams[0]);
+            }
+        };
 
         pc.oniceconnectionstatechange = () => {
             console.log(`[room] peer ${peerId} ICE: ${pc.iceConnectionState}`);
@@ -617,9 +621,13 @@
             }
         };
 
-        if (localStream) {
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        if (localStream && localStream.getTracks().length > 0) {
+            localStream.getTracks().forEach(track => {
+                console.log('[room] adding track to peer', peerId, track.kind, 'enabled:', track.enabled, 'readyState:', track.readyState);
+                pc.addTrack(track, localStream);
+            });
         } else {
+            console.log('[room] no local stream — adding recvonly transceivers for peer', peerId);
             pc.addTransceiver('audio', { direction: 'recvonly' });
             pc.addTransceiver('video', { direction: 'recvonly' });
         }
@@ -643,12 +651,22 @@
 
     async function handleOffer(msg) {
         try {
-            // If peer exists but is in a bad state, close it first
             const existing = peers.get(msg.from);
-            if (existing && (existing.connectionState === 'closed' || existing.connectionState === 'failed')) {
-                existing.close();
-                peers.delete(msg.from);
-                offeredTo.delete(msg.from);
+            if (existing) {
+                if (existing.signalingState === 'have-local-offer') {
+                    // Glare: both sides sent offer — lower ID wins
+                    if (me.id > msg.from) {
+                        console.log('[room] glare — we lose, rollback and accept offer from', msg.from);
+                        await existing.setLocalDescription();
+                    } else {
+                        console.log('[room] glare — we win, ignore offer from', msg.from);
+                        return;
+                    }
+                } else if (existing.connectionState === 'closed' || existing.connectionState === 'failed') {
+                    existing.close();
+                    peers.delete(msg.from);
+                    offeredTo.delete(msg.from);
+                }
             }
             const pc = createPeer(msg.from);
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.data.sdp }));
@@ -656,6 +674,7 @@
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             await postSignal(msg.from, 'answer', { sdp: pc.localDescription.sdp, type: 'answer' });
+            console.log('[room] sent answer to peer', msg.from);
         } catch (err) {
             console.warn('[room] handleOffer error:', err);
         }
@@ -781,32 +800,44 @@
     }
 
     function attachRemoteStream(peerId, stream) {
+        if (!stream) {
+            console.warn('[room] attachRemoteStream called with null stream for peer', peerId);
+            return;
+        }
+
         const tile = ensureRemoteTile(peerId);
         const video = tile.querySelector('video');
         const placeholder = tile.querySelector('.video-placeholder');
 
-        // Always mute remote video locally (required for autoplay)
+        console.log('[room] attaching stream to peer', peerId, 'tracks:', stream.getTracks().map(t => `${t.kind}:${t.readyState}:${t.enabled}`).join(', '));
+
+        // Don't re-assign if already attached
+        if (video.srcObject === stream) return;
+
         video.muted = true;
         video.srcObject = stream;
 
+        const hidePlaceholder = () => {
+            if (placeholder) placeholder.style.display = 'none';
+        };
+
+        video.onloadedmetadata = hidePlaceholder;
         video.onloadeddata = () => {
-            console.log('[room] remote video loaded for peer', peerId, video.videoWidth, 'x', video.videoHeight);
-            placeholder.style.display = 'none';
+            console.log('[room] remote video data for peer', peerId, video.videoWidth, 'x', video.videoHeight);
+            hidePlaceholder();
         };
+        video.onplaying = hidePlaceholder;
 
-        video.onplaying = () => {
-            placeholder.style.display = 'none';
-        };
-
-        video.play().then(() => {
-            placeholder.style.display = 'none';
-        }).catch(() => {
+        video.play().then(hidePlaceholder).catch(() => {
             console.warn('[room] autoplay blocked for peer', peerId, '— retrying');
             video.muted = true;
-            video.play().then(() => {
-                placeholder.style.display = 'none';
-            }).catch(() => {});
+            video.play().then(hidePlaceholder).catch(() => {});
         });
+
+        // Timeout fallback: hide placeholder after 3s even if events don't fire
+        setTimeout(() => {
+            if (video.readyState >= 1) hidePlaceholder();
+        }, 3000);
     }
 
     function updateMediaIcons(tile, p) {
@@ -914,14 +945,20 @@
                 isScreenSharing = false;
                 document.getElementById('local-share-indicator').classList.add('hidden');
                 const camTrack = localStream && isCameraEnabled ? localStream.getVideoTracks()[0] : null;
-                replaceVideoTrackForAll(camTrack);
-                if (localStream) localVideo.srcObject = localStream;
+                replaceVideoTrackForAll(camTrack || null);
+                if (localStream) {
+                    localVideo.muted = true;
+                    localVideo.srcObject = localStream;
+                    localVideo.play().catch(() => {});
+                }
             } else {
                 screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
                 const track = screenStream.getVideoTracks()[0];
                 isScreenSharing = true;
                 replaceVideoTrackForAll(track);
+                localVideo.muted = true;
                 localVideo.srcObject = screenStream;
+                localVideo.play().catch(() => {});
                 document.getElementById('local-share-indicator').classList.remove('hidden');
                 track.onended = () => { if (isScreenSharing) toggleScreenShare(); };
             }
@@ -934,12 +971,20 @@
 
     function replaceVideoTrackForAll(track) {
         peers.forEach((pc, peerId) => {
-            const senders = pc.getSenders().filter(s => s.track && s.track.kind === 'video');
-            senders.forEach(sender => {
-                sender.replaceTrack(track).catch(err => {
-                    console.warn('[room] replaceTrack failed for peer', peerId, err);
-                });
-            });
+            const senders = pc.getSenders();
+            for (const sender of senders) {
+                if (sender.track && sender.track.kind === 'video') {
+                    sender.replaceTrack(track).then(() => {
+                        console.log('[room] replaced video track for peer', peerId);
+                    }).catch(err => {
+                        console.warn('[room] replaceTrack failed for peer', peerId, err);
+                    });
+                } else if (!sender.track && sender.track !== null) {
+                    // Some browsers: sender exists but track is not yet set
+                    // Try replaceTrack anyway — it will attach the track
+                    sender.replaceTrack(track).catch(() => {});
+                }
+            }
         });
     }
 
