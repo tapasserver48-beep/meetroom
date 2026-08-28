@@ -317,28 +317,38 @@
         // Then try WebSocket (nice to have, not required)
         await connectSignaling();
     });
+    let mediaRequestInFlight = false;
+
     async function initLocalMedia() {
+        if (mediaRequestInFlight) {
+            console.log('[room] getUserMedia already in flight — skipping');
+            return;
+        }
+        mediaRequestInFlight = true;
         try {
-            const constraints = {
-                audio: true,
-                video: { width: { ideal: 1280 }, height: { ideal: 720 } }
-            };
-            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            // Stop any existing tracks first (prevents "camera already in use")
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+                localStream = null;
+            }
+
+            // Relaxed constraints — no strict resolution/frameRate
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
             console.log('[room] getUserMedia OK — tracks:', localStream.getTracks().map(t => `${t.kind}:${t.readyState}:${t.enabled}`).join(', '));
 
             localStream.getAudioTracks().forEach(t => t.enabled = isMicEnabled);
             localStream.getVideoTracks().forEach(t => t.enabled = isCameraEnabled);
 
-            // Always mute locally to guarantee autoplay works
             localVideo.muted = true;
             localVideo.srcObject = localStream;
 
-            // Force play — muted video always succeeds
             await localVideo.play().catch(e => {
-                console.warn('[room] play() failed, retrying:', e);
+                console.warn('[room] play() failed:', e.name, e.message);
             });
 
-            // Ensure video is actually rendering
             localVideo.onloadeddata = () => {
                 console.log('[room] local video loadeddata — dimensions:', localVideo.videoWidth, 'x', localVideo.videoHeight);
                 localVideoPlaceholder.style.display = 'none';
@@ -346,15 +356,12 @@
             };
 
             localVideo.onplaying = () => {
-                console.log('[room] local video playing');
                 localVideoPlaceholder.style.display = 'none';
                 localVideo.style.display = 'block';
             };
 
-            // If video track unmutes (some browsers do this), force play again
             localStream.getVideoTracks().forEach(track => {
                 track.onunmute = () => {
-                    console.log('[room] video track unmuted');
                     if (isCameraEnabled) {
                         localVideo.srcObject = localStream;
                         localVideo.play().catch(() => {});
@@ -366,7 +373,6 @@
 
             updateLocalMediaUI();
 
-            // Failsafe: if video still blank after 2s, retry everything
             setTimeout(() => {
                 if (isCameraEnabled && localStream && localVideo.readyState < 2) {
                     console.warn('[room] video still not ready after 2s — retrying');
@@ -382,6 +388,8 @@
             isCameraEnabled = false;
             localStream = null;
             updateLocalMediaUI();
+        } finally {
+            mediaRequestInFlight = false;
         }
     }
 
