@@ -498,6 +498,9 @@
         if (document.hidden) return;
         try {
             const { data } = await window.axios.get(urls.poll);
+            if ((data.signals || []).length > 0) {
+                console.log('[room] poll received', data.signals.length, 'signals:', data.signals.map(s => s.type + ' from ' + s.from));
+            }
             (data.signals || []).forEach(processSignal);
         } catch (e) {
             // 403 = we were reaped as stale (e.g., laptop sleep) — re-enter room
@@ -505,6 +508,8 @@
                 console.warn('[room] stale participant detected, re-announcing...');
                 await announceHello();
                 reconcilePeers();
+            } else {
+                console.warn('[room] poll failed:', e?.response?.status, e?.message);
             }
         }
     }
@@ -512,22 +517,24 @@
     async function syncRoster() {
         try {
             const { data } = await window.axios.get(urls.state);
+            console.log('[room] roster sync — me:', me.id, 'participants:', (data.participants || []).map(p => p.participant_id + ':' + p.name));
             (data.participants || []).forEach(p => roster.set(p.participant_id, p));
             renderRoster();
             reconcilePeers();
         } catch (err) {
-            console.warn('[room] roster sync failed:', err?.response?.status);
+            console.warn('[room] roster sync failed:', err?.response?.status, err?.response?.data);
         }
     }
 
     async function announceHello() {
         try {
             const { data } = await window.axios.post(urls.hello);
+            console.log('[room] hello — got peers:', (data.participants || []).map(p => p.participant_id + ':' + p.name));
             (data.participants || []).forEach(p => roster.set(p.participant_id, p));
             renderRoster();
             reconcilePeers();
         } catch (err) {
-            console.warn('[room] hello failed:', err?.response?.status);
+            console.warn('[room] hello failed:', err?.response?.status, err?.response?.data);
         }
     }
 
@@ -556,6 +563,7 @@
 
     async function maybeOffer(peerId) {
         try {
+            console.log('[room] maybeOffer check for peer', peerId, 'my id', me.id, 'roster size', roster.size);
             // Clean up stale peer first
             const existing = peers.get(peerId);
             if (existing && (existing.connectionState === 'closed' || existing.connectionState === 'failed')) {
@@ -565,15 +573,24 @@
             }
 
             const pc = createPeer(peerId);
-            if (pc.signalingState === 'have-local-offer') return;
-            if (pc.signalingState !== 'stable') return;
+            if (pc.signalingState === 'have-local-offer') {
+                console.log('[room] already have local offer for', peerId);
+                return;
+            }
+            if (pc.signalingState !== 'stable') {
+                console.log('[room] signalingState not stable for', peerId, pc.signalingState);
+                return;
+            }
 
+            console.log('[room] creating offer for', peerId);
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             offeredTo.add(peerId);
+            console.log('[room] posting offer to', peerId);
             await postSignal(peerId, 'offer', { sdp: pc.localDescription.sdp, type: 'offer' });
+            console.log('[room] offer posted to', peerId);
         } catch (err) {
-            console.warn('[room] maybeOffer failed for', peerId, err);
+            console.warn('[room] maybeOffer failed for', peerId, err, err?.response?.data);
             offeredTo.delete(peerId);
             // Retry after a delay
             setTimeout(() => maybeOffer(peerId), 3000);
@@ -698,6 +715,7 @@
     }
 
     async function handleOffer(msg) {
+        console.log('[room] received offer from', msg.from);
         try {
             const existing = peers.get(msg.from);
             if (existing) {
@@ -729,6 +747,7 @@
     }
 
     async function handleAnswer(msg) {
+        console.log('[room] received answer from', msg.from);
         try {
             const pc = peers.get(msg.from);
             if (!pc) return;
@@ -793,9 +812,12 @@
 
     async function postSignal(to, type, data) {
         try {
+            console.log(`[room] postSignal ${type} to ${to}`);
             await window.axios.post(urls.signal, { to, type, data });
+            console.log(`[room] postSignal ${type} to ${to} OK`);
         } catch (err) {
-            console.warn(`[room] signal ${type} to ${to} failed:`, err?.response?.status || err.message);
+            console.warn(`[room] signal ${type} to ${to} failed:`, err?.response?.status, err?.response?.data || err.message);
+            throw err;
         }
     }
 

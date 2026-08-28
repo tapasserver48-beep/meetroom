@@ -147,8 +147,8 @@ class TurnService
 
     protected function getStunOnlyServers(): array
     {
-        // ZERO TURN — STUN only. No username/credential, no relay allocation,
-        // so the "701 TURN allocate timed out" error disappears entirely.
+        // ZERO TURN — STUN only. Keep only the highly-reliable Google + Cloudflare STUN.
+        // global.stun.twilio.com was causing 701 host lookup errors, so removed.
         return [
             [
                 'urls' => [
@@ -161,9 +161,6 @@ class TurnService
             ],
             [
                 'urls' => 'stun:stun.cloudflare.com:3478',
-            ],
-            [
-                'urls' => 'stun:global.stun.twilio.com:3478',
             ],
         ];
     }
