@@ -79,11 +79,35 @@ class TurnService
                     if (is_array($servers)) {
                         $normalized = collect($servers)
                             ->filter(fn($s) => isset($s['urls']))
-                            ->map(fn($s) => [
-                                'urls' => $s['urls'],
-                                'username' => $s['username'] ?? null,
-                                'credential' => $s['credential'] ?? null,
-                            ])
+                            ->map(function ($s) {
+                                $urls = $s['urls'];
+                                if (is_string($urls)) {
+                                    $urls = [$urls];
+                                }
+
+                                // Keep only firewall-friendly transports.
+                                // • Drop port 53 (browsers block it and it times out).
+                                // • Drop UDP TURN (most networks/ISP block UDP 3478);
+                                //   rely on TLS/TCP TURN (turns:443 / turns:5349 /
+                                //   turn:80) which traverse almost any firewall.
+                                // STUN (UDP 3478) is kept — it still helps when UDP is allowed.
+                                $urls = array_values(array_filter($urls, function ($u) {
+                                    if (str_contains($u, ':53')) {
+                                        return false;
+                                    }
+                                    if (str_contains($u, 'transport=udp')) {
+                                        return false;
+                                    }
+                                    return true;
+                                }));
+
+                                return [
+                                    'urls' => $urls,
+                                    'username' => $s['username'] ?? null,
+                                    'credential' => $s['credential'] ?? null,
+                                ];
+                            })
+                            ->filter(fn($s) => count($s['urls']) > 0)
                             ->values()
                             ->toArray();
 
