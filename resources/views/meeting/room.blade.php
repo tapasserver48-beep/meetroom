@@ -862,7 +862,9 @@
         // Don't re-assign if already attached
         if (video.srcObject === stream) return;
 
-        video.muted = true;
+        // Remote audio must be audible — try unmuted first, fall back to muted for autoplay policy
+        video.muted = false;
+        video.volume = 1.0;
         video.srcObject = stream;
 
         const hidePlaceholder = () => {
@@ -876,10 +878,17 @@
         };
         video.onplaying = hidePlaceholder;
 
-        video.play().then(hidePlaceholder).catch(() => {
-            console.warn('[room] autoplay blocked for peer', peerId, '— retrying');
+        video.play().then(() => {
+            hidePlaceholder();
+            console.log('[room] remote stream playing for peer', peerId);
+        }).catch(() => {
+            console.warn('[room] autoplay with audio blocked for peer', peerId, '— retrying muted');
             video.muted = true;
-            video.play().then(hidePlaceholder).catch(() => {});
+            video.play().then(() => {
+                hidePlaceholder();
+                // Show unmute hint — user gesture will unmute
+                console.log('[room] remote video muted for autoplay — click to unmute');
+            }).catch(() => {});
         });
 
         // Timeout fallback: hide placeholder after 3s even if events don't fire
