@@ -100,12 +100,23 @@ class RoomController extends Controller
             'data' => 'required|array',
         ]);
 
+        // Look up the target within THIS meeting by id. We intentionally do NOT
+        // require status === 'joined' here: a peer can be signaled the moment it
+        // exists (e.g. just admitted from the waiting room, or mid-rejoin) and a
+        // strict "joined" check caused a 404 that aborted the entire WebRTC
+        // offer/answer/ICE handshake. The $meeting->participants() scope already
+        // restricts this to members of the current meeting.
         $target = $meeting->participants()
             ->where('id', $validated['to'])
-            ->where('status', 'joined')
             ->first();
 
         if (!$target) {
+            \Log::warning('[room] signal target_not_found', [
+                'meeting_id' => $meeting->id,
+                'from' => $me->id,
+                'to' => $validated['to'],
+                'known_participants' => $meeting->participants()->pluck('id', 'status'),
+            ]);
             return response()->json(['error' => 'target_not_found'], 404);
         }
 
