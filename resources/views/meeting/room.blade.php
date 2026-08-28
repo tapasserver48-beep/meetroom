@@ -3,12 +3,13 @@
 @php
     $publicHost = trim((string) config('meetroom.reverb.public_host')) ?: request()->getHost();
     $isHttps = request()->isSecure();
+    $reverbPort = (int) config('meetroom.reverb.port', 8080);
     $echoConfig = [
         'key' => config('meetroom.reverb.key'),
         'wsHost' => $publicHost,
-        'wsPort' => 80,
-        'wssPort' => 443,
-        'forceTLS' => $isHttps,
+        'wsPort' => $reverbPort,
+        'wssPort' => $reverbPort,
+        'forceTLS' => false,
     ];
     $isHostUser = $participant->role === 'host' || $participant->role === 'cohost'
         || (auth()->check() && auth()->id() === $meeting->host_id);
@@ -114,7 +115,7 @@
     <!-- Main Meeting Area -->
     <main class="pt-16 h-screen flex flex-col">
         <!-- Video Grid -->
-        <div id="video-grid" class="flex-1 relative overflow-hidden pb-24">
+        <div id="video-grid" class="flex-1 relative overflow-hidden pb-28">
             <!-- Local Video (Picture in Picture) -->
             <div id="local-video-container" class="absolute bottom-4 right-4 z-20 w-48 h-36 md:w-64 md:h-48 rounded-lg overflow-hidden border-2 border-indigo-500 bg-gray-900">
                 <video id="local-video" autoplay muted playsinline class="w-full h-full object-cover"></video>
@@ -131,7 +132,7 @@
             </div>
 
             <!-- Remote Videos Grid -->
-            <div id="remote-videos" class="w-full h-full grid grid-cols-1 gap-2 p-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div id="remote-videos" class="w-full h-full grid grid-cols-1 gap-2 p-4 md:grid-cols-2 lg:grid-cols-3">
                 <div id="empty-state" class="col-span-full row-span-full flex flex-col items-center justify-center text-gray-500">
                     <svg class="h-24 w-24 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
@@ -144,46 +145,46 @@
 
         <!-- Control Bar -->
         <div class="fixed bottom-0 left-0 right-0 z-50 bg-gray-900/95 backdrop-blur-sm border-t border-gray-800">
-            <div class="max-w-full mx-auto px-4 py-4">
-                <div class="flex items-center justify-center space-x-6">
+            <div class="max-w-full mx-auto px-4 py-3">
+                <div class="flex items-center justify-center space-x-3 sm:space-x-5">
                     <!-- Mic Toggle -->
-                    <button id="mic-btn" class="flex flex-col items-center p-3 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors" title="Mute/Unmute (M)">
-                        <svg id="mic-icon" class="h-7 w-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button id="mic-btn" class="flex flex-col items-center p-3 sm:p-4 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors min-w-[60px]" title="Mute/Unmute (M)">
+                        <svg id="mic-icon" class="h-8 w-8 sm:h-9 sm:w-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
                         </svg>
-                        <span id="mic-label" class="text-xs text-gray-400 mt-1">Mute</span>
+                        <span id="mic-label" class="text-xs text-gray-400 mt-1.5">Mute</span>
                     </button>
 
                     <!-- Camera Toggle -->
-                    <button id="camera-btn" class="flex flex-col items-center p-3 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors" title="Start/Stop Video (V)">
-                        <svg id="camera-icon" class="h-7 w-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button id="camera-btn" class="flex flex-col items-center p-3 sm:p-4 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors min-w-[60px]" title="Start/Stop Video (V)">
+                        <svg id="camera-icon" class="h-8 w-8 sm:h-9 sm:w-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                         </svg>
-                        <span id="camera-label" class="text-xs text-gray-400 mt-1">Video</span>
+                        <span id="camera-label" class="text-xs text-gray-400 mt-1.5">Video</span>
                     </button>
 
                     <!-- Screen Share -->
-                    <button id="screen-btn" class="flex flex-col items-center p-3 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors" title="Share Screen (S)">
-                        <svg class="h-7 w-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button id="screen-btn" class="flex flex-col items-center p-3 sm:p-4 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors min-w-[60px]" title="Share Screen (S)">
+                        <svg class="h-8 w-8 sm:h-9 sm:w-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                         </svg>
-                        <span id="screen-label" class="text-xs text-gray-400 mt-1">Share</span>
+                        <span id="screen-label" class="text-xs text-gray-400 mt-1.5">Share</span>
                     </button>
 
                     <!-- Participants Panel Toggle -->
-                    <button id="participants-panel-btn" class="flex flex-col items-center p-3 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors" title="Participants (P)">
-                        <svg class="h-7 w-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button id="participants-panel-btn" class="flex flex-col items-center p-3 sm:p-4 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors min-w-[60px]" title="Participants (P)">
+                        <svg class="h-8 w-8 sm:h-9 sm:w-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
                         </svg>
-                        <span class="text-xs text-gray-400 mt-1">People</span>
+                        <span class="text-xs text-gray-400 mt-1.5">People</span>
                     </button>
 
                     <!-- Chat Panel Toggle -->
-                    <button id="chat-panel-btn" class="flex flex-col items-center p-3 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors" title="Chat (C)">
-                        <svg class="h-7 w-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button id="chat-panel-btn" class="flex flex-col items-center p-3 sm:p-4 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors min-w-[60px]" title="Chat (C)">
+                        <svg class="h-8 w-8 sm:h-9 sm:w-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
                         </svg>
-                        <span class="text-xs text-gray-400 mt-1">Chat</span>
+                        <span class="text-xs text-gray-400 mt-1.5">Chat</span>
                     </button>
                 </div>
             </div>
@@ -191,7 +192,7 @@
     </main>
 
     <!-- Participants Sidebar -->
-    <aside id="participants-sidebar" class="fixed top-16 right-0 bottom-0 w-72 bg-gray-900 border-l border-gray-800 transform translate-x-full transition-transform duration-300 z-40 flex flex-col">
+    <aside id="participants-sidebar" class="fixed top-16 right-0 bottom-[88px] w-72 bg-gray-900 border-l border-gray-800 transform translate-x-full transition-transform duration-300 z-40 flex flex-col">
         <div class="p-4 border-b border-gray-800 flex items-center justify-between">
             <h2 class="text-lg font-semibold text-white">Participants</h2>
             <button id="close-participants" class="p-1 rounded-lg hover:bg-gray-800 transition-colors">
@@ -213,7 +214,7 @@
 
     <!-- Waiting Room Sidebar (host only) -->
     @if ($isHostUser)
-    <aside id="waiting-sidebar" class="fixed top-16 right-0 bottom-0 w-72 bg-gray-900 border-l border-gray-800 transform translate-x-full transition-transform duration-300 z-40 flex flex-col">
+    <aside id="waiting-sidebar" class="fixed top-16 right-0 bottom-[88px] w-72 bg-gray-900 border-l border-gray-800 transform translate-x-full transition-transform duration-300 z-40 flex flex-col">
         <div class="p-4 border-b border-gray-800 flex items-center justify-between">
             <h2 class="text-lg font-semibold text-white">Waiting Room</h2>
             <button id="close-waiting" class="p-1 rounded-lg hover:bg-gray-800 transition-colors">
@@ -229,7 +230,7 @@
     @endif
 
     <!-- Chat Sidebar -->
-    <aside id="chat-sidebar" class="fixed top-16 right-0 bottom-0 w-80 bg-gray-900 border-l border-gray-800 transform translate-x-full transition-transform duration-300 z-40 flex flex-col">
+    <aside id="chat-sidebar" class="fixed top-16 right-0 bottom-[88px] w-80 bg-gray-900 border-l border-gray-800 transform translate-x-full transition-transform duration-300 z-40 flex flex-col">
         <div class="p-4 border-b border-gray-800 flex items-center justify-between">
             <h2 class="text-lg font-semibold text-white">Chat</h2>
             <button id="close-chat" class="p-1 rounded-lg hover:bg-gray-800 transition-colors">
@@ -288,7 +289,7 @@
 
     // ---- Init ---------------------------------------------------------------
     document.addEventListener('DOMContentLoaded', async () => {
-        console.log('[room] wsHost:', roomConfig.echo.wsHost, '| channel: meeting.' + roomConfig.meetingId);
+        console.log('[room] wsHost:', roomConfig.echo.wsHost, '| port:', roomConfig.echo.wsPort, '| channel: meeting.' + roomConfig.meetingId);
         await initLocalMedia();
         setupUI();
         renderRosterSelf();
@@ -296,11 +297,17 @@
 
         // Start REST polling FIRST — this is the reliable path
         setInterval(() => syncRoster(), 5000);
-        setInterval(pollSignals, 1000);
+        setInterval(pollSignals, 1500);
 
         await syncRoster();
         await announceHello();
         reconcilePeers();
+
+        // Retry hello + reconcile periodically to heal broken connections
+        setInterval(async () => {
+            await syncRoster();
+            reconcilePeers();
+        }, 8000);
 
         // Then try WebSocket (nice to have, not required)
         await connectSignaling();
@@ -348,13 +355,13 @@
                 setConnectionStatus('connected');
             });
 
-            // If WS connects within 3s, great. Otherwise fall back to REST.
+            // If WS connects within 5s, great. Otherwise fall back to REST.
             setTimeout(() => {
                 if (statusText.textContent !== 'Connected') {
                     console.log('[room] WS slow — using REST polling');
                     setConnectionStatus('connected');
                 }
-            }, 3000);
+            }, 5000);
         } catch (err) {
             console.warn('WS init failed, using REST polling:', err);
             setConnectionStatus('connected');
@@ -408,11 +415,9 @@
         } catch (e) {
             // 403 = we were reaped as stale (e.g., laptop sleep) — re-enter room
             if (e?.response?.status === 403) {
-                const last = Number(sessionStorage.getItem('room_rejoin_at') || 0);
-                if (Date.now() - last > 30000) {
-                    sessionStorage.setItem('room_rejoin_at', String(Date.now()));
-                    window.location.reload();
-                }
+                console.warn('[room] stale participant detected, re-announcing...');
+                await announceHello();
+                reconcilePeers();
             }
         }
     }
@@ -450,9 +455,13 @@
             if (id === me.id || p.status !== 'joined') return;
             if (me.id < id) {
                 const pc = peers.get(id);
-                // Offer if no peer yet, or peer is closed/failed, or we never offered
-                if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed' || !offeredTo.has(id)) {
-                    maybeOffer(id);
+                const needOffer = !pc
+                    || pc.connectionState === 'closed'
+                    || pc.connectionState === 'failed'
+                    || pc.connectionState === 'disconnected'
+                    || !offeredTo.has(id);
+                if (needOffer) {
+                    setTimeout(() => maybeOffer(id), 300 + Math.random() * 700);
                 }
             }
         });
@@ -460,6 +469,14 @@
 
     async function maybeOffer(peerId) {
         try {
+            // Clean up stale peer first
+            const existing = peers.get(peerId);
+            if (existing && (existing.connectionState === 'closed' || existing.connectionState === 'failed')) {
+                existing.close();
+                peers.delete(peerId);
+                offeredTo.delete(peerId);
+            }
+
             const pc = createPeer(peerId);
             if (pc.signalingState === 'have-local-offer') return;
             if (pc.signalingState !== 'stable') return;
@@ -471,6 +488,8 @@
         } catch (err) {
             console.warn('[room] maybeOffer failed for', peerId, err);
             offeredTo.delete(peerId);
+            // Retry after a delay
+            setTimeout(() => maybeOffer(peerId), 3000);
         }
     }
 
@@ -522,17 +541,28 @@
                 console.log('[room] ICE failed for', peerId, '— restarting');
                 try { pc.restartIce(); } catch (e) {}
             }
+            if (pc.iceConnectionState === 'disconnected') {
+                console.log('[room] ICE disconnected for', peerId, '— will retry');
+                setTimeout(() => {
+                    if (pc.connectionState !== 'closed') {
+                        try { pc.restartIce(); } catch (e) {}
+                    }
+                }, 2000);
+            }
         };
 
         pc.onconnectionstatechange = () => {
             console.log(`[room] peer ${peerId} state: ${pc.connectionState}`);
             if (pc.connectionState === 'failed') {
-                console.log('[room] connection failed, restarting ICE for', peerId);
-                try { pc.restartIce(); } catch (e) {}
-                // Remove stale peer so reconcilePeers creates a fresh one
+                console.log('[room] connection failed, recreating peer for', peerId);
+                try { pc.close(); } catch (e) {}
                 peers.delete(peerId);
                 offeredTo.delete(peerId);
-                setTimeout(() => maybeOffer(peerId), 1000);
+                setTimeout(() => maybeOffer(peerId), 1500);
+            }
+            if (pc.connectionState === 'closed') {
+                peers.delete(peerId);
+                offeredTo.delete(peerId);
             }
         };
 
@@ -556,7 +586,7 @@
         // Older peer initiates the offer to the newcomer.
         if (me.id < msg.from) {
             // Small delay so newcomer's peer connection is ready
-            setTimeout(() => maybeOffer(msg.from), 500);
+            setTimeout(() => maybeOffer(msg.from), 800);
         }
     }
 
