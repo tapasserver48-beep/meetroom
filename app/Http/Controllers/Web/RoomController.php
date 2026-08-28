@@ -349,6 +349,8 @@ class RoomController extends Controller
             'to' => $to,
         ], $payload);
 
+        \Log::info('[room] relay', ['meeting' => $meeting->id, 'from' => $from->id, 'to' => $to, 'type' => $payload['type'] ?? '?']);
+
         if ($persist) {
             $full['sid'] = (string) Str::uuid();
 
