@@ -95,14 +95,19 @@ php-fpm -D
 php artisan reverb:start --host=0.0.0.0 --port=8080 &
 REVERB_PID=$!
 
-# Wait for Reverb to be ready (up to 15 seconds)
-echo "Waiting for Reverb WebSocket server..."
-for i in $(seq 1 15); do
-    if curl -sf http://127.0.0.1:8080 > /dev/null 2>&1; then
-        echo "Reverb is ready!"
+# Wait for Reverb to accept connections (WebSocket server — check TCP port)
+echo "Waiting for Reverb WebSocket server on port 8080..."
+for i in $(seq 1 20); do
+    # Try to open a TCP connection to Reverb's port
+    if (echo | timeout 2 nc 127.0.0.1 8080 2>/dev/null); then
+        echo "Reverb is ready on port 8080!"
         break
     fi
-    # Also check if process is still running
+    # Fallback: try HTTP request (Reverb responds to GET /)
+    if (curl -sf --max-time 2 http://127.0.0.1:8080/ >/dev/null 2>&1); then
+        echo "Reverb is ready (HTTP check passed)!"
+        break
+    fi
     if ! kill -0 $REVERB_PID 2>/dev/null; then
         echo "Reverb process died — restarting..."
         php artisan reverb:start --host=0.0.0.0 --port=8080 &
@@ -110,6 +115,10 @@ for i in $(seq 1 15); do
     fi
     sleep 1
 done
+
+# Extra safety: give Reverb 2 more seconds to fully initialize after port opens
+sleep 2
+echo "Starting nginx..."
 
 # Start Nginx in foreground
 nginx -g "daemon off;"
