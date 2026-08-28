@@ -415,7 +415,11 @@
         // Try WebSocket as a bonus (faster real-time) — don't block on it
         try {
             window.echo = await window.initEcho(roomConfig.echo);
-            channel = window.echo.join(`meeting.${roomConfig.meetingId}`);
+            // Server broadcasts on a PUBLIC channel ("meeting.<id>"), so we must
+            // subscribe to a public channel here. Using .join() would create a
+            // "presence-meeting.<id>" channel that requires auth and would never
+            // receive the server's broadcasts.
+            channel = window.echo.channel(`meeting.${roomConfig.meetingId}`);
 
             bindConnectionState();
             bindRoomEvents();

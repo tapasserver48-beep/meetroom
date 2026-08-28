@@ -212,8 +212,16 @@ class RoomController extends Controller
             ->limit(100)
             ->get();
 
-        if ($rows->isNotEmpty()) {
-            DB::table('meeting_signals')->whereIn('id', $rows->pluck('id'))->delete();
+        // Only delete signals targeted specifically at this participant.
+        // Broadcast (target_participant_id = NULL) signals must remain readable
+        // by EVERY participant, otherwise only the first poller would receive
+        // them (e.g. one-way chat). They are pruned by the stale-cleanup below.
+        $deleteIds = $rows
+            ->where('target_participant_id', $me->id)
+            ->pluck('id');
+
+        if ($deleteIds->isNotEmpty()) {
+            DB::table('meeting_signals')->whereIn('id', $deleteIds)->delete();
         }
 
         // Opportunistic cleanup of undelivered stale rows
