@@ -19,31 +19,17 @@ class TurnService
     }
 
     /**
-     * Get ICE servers — Render-native, no Cloudflare dependency required.
-     *
-     * Always returns a working set of public STUN + free TURN (openrelay)
-     * so calls connect even when the network blocks Cloudflare TURN.
-     * If Cloudflare credentials are configured, its TURN is prepended as the
-     * primary relay (most reliable on Render), but the public fallback remains
-     * so "TURN allocate timed out" against one provider does not break the call.
+     * Get ICE servers — ZERO external TURN as requested.
+     * Returns STUN only (Google + Twilio) so media flows peer-to-peer via
+     * Render signaling alone. Works on same Wi-Fi/LAN and many NATs without
+     * any TURN provider. No Cloudflare, no openrelay — entirely self-contained.
+     * If you later need strict-NAT traversal, re-enable TURN in this file.
      */
     public function getIceServers(int $ttl = 86400): array
     {
-        $cacheKey = "turn_ice_servers_v2_{$this->keyId}";
-
-        return Cache::remember($cacheKey, now()->addSeconds($ttl - 300), function () use ($ttl) {
-            $cloudflare = $this->fetchIceServers($ttl);
-            $fallback  = $this->getPublicFallbackServers();
-
-            // If Cloudflare returned usable TURN, keep it first (best on Render),
-            // otherwise just use the public fallback.
-            $hasTurn = collect($cloudflare)->contains(fn($s) => isset($s['username']));
-            if ($hasTurn) {
-                // Deduplicate: keep Cloudflare TURN + public STUN/TURN (no duplicates)
-                return array_values(array_merge($cloudflare, $fallback));
-            }
-            return $fallback;
-        });
+        // Bypass cache entirely for STUN-only — no TTL needed, no external fetch.
+        \Log::info('[TurnService] Using ZERO external TURN — STUN only');
+        return $this->getStunOnlyServers();
     }
 
     protected function fetchIceServers(int $ttl): array
@@ -154,14 +140,15 @@ class TurnService
         return $this->getStunOnlyServers();
     }
 
-    /**
-     * Public STUN + free TURN that works without any Cloudflare account.
-     * Hosted outside Render so it traverses the same firewall issues, but on
-     * a different provider/domain — when Cloudflare TURN times out (701) this
-     * fallback relay can still connect.
-     */
     protected function getPublicFallbackServers(): array
     {
+        return $this->getStunOnlyServers();
+    }
+
+    protected function getStunOnlyServers(): array
+    {
+        // ZERO TURN — STUN only. No username/credential, no relay allocation,
+        // so the "701 TURN allocate timed out" error disappears entirely.
         return [
             [
                 'urls' => [
@@ -173,23 +160,11 @@ class TurnService
                 ],
             ],
             [
+                'urls' => 'stun:stun.cloudflare.com:3478',
+            ],
+            [
                 'urls' => 'stun:global.stun.twilio.com:3478',
             ],
-            // Free public TURN — openrelay.metered.ca (no API key needed, widely reachable on 80/443)
-            [
-                'urls' => [
-                    'turn:openrelay.metered.ca:80',
-                    'turn:openrelay.metered.ca:443',
-                    'turn:openrelay.metered.ca:443?transport=tcp',
-                ],
-                'username' => 'openrelayproject',
-                'credential' => 'openrelayproject',
-            ],
         ];
-    }
-
-    protected function getStunOnlyServers(): array
-    {
-        return $this->getPublicFallbackServers();
     }
 }
