@@ -409,7 +409,7 @@
         // REST polling is the primary transport. Mark connected immediately.
         setConnectionStatus('connected');
 
-        // Try WebSocket as a bonus (faster real-time)
+        // Try WebSocket as a bonus (faster real-time) — don't block on it
         try {
             window.echo = await window.initEcho(roomConfig.echo);
             channel = window.echo.join(`meeting.${roomConfig.meetingId}`);
@@ -417,8 +417,12 @@
             bindConnectionState();
             bindRoomEvents();
 
-            channel.subscribed(async () => {
+            channel.subscribed(() => {
                 console.log('[room] WS subscribed — real-time signaling active');
+            });
+
+            channel.error((err) => {
+                console.warn('[room] WS channel error (non-fatal):', err);
             });
         } catch (err) {
             console.warn('[room] WS init failed, using REST-only mode:', err);
@@ -427,14 +431,15 @@
 
     function bindConnectionState() {
         const conn = window.echo.connector.pusher.connection;
+        let wsConnectedOnce = false;
         conn.bind('state_change', (states) => {
             console.log('[room] WS state:', states.current);
-            // Only show WS-specific states if we haven't established REST connection yet.
-            // REST polling is the primary transport — WS is a bonus.
             if (states.current === 'connected') {
+                wsConnectedOnce = true;
                 setConnectionStatus('connected');
             }
-            // Do NOT override to reconnecting/failed — REST is still working.
+            // NEVER downgrade from connected — REST polling is the primary transport.
+            // WS is just a bonus for faster signaling. If WS drops, REST handles it.
         });
     }
 
