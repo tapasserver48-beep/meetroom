@@ -714,6 +714,15 @@
             setTimeout(() => maybeOffer(msg.from), 800);
         }
     }
+//newchanges
+function stripLegacySsrcMsidLines(sdp) {
+    const lines = sdp.split(/\r\n|\n/);
+    const filtered = lines.filter(line => !(line.startsWith('a=ssrc:') && line.includes('msid:')));
+    const removed = lines.length - filtered.length;
+    console.log('[room] stripLegacySsrcMsidLines removed', removed, 'line(s)');
+    return filtered.join('\r\n');
+}
+
 
     async function handleOffer(msg) {
         console.log('[room] received offer from', msg.from);
@@ -735,21 +744,14 @@
                     offeredTo.delete(msg.from);
                 }
             }
-            const pc = createPeer(msg.from);
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.data.sdp }));
-            } catch (e) {
-                console.warn('[room] setRemoteDescription offer failed, trying SDP fix for', msg.from, e.message);
-                // Old Plan-B offers contain a=ssrc ... msid:stream track which Unified-Plan rejects.
-                // Strip those lines (handle both \r\n and \n) and retry.
-                let fixedSdp = msg.data.sdp.replace(/^a=ssrc:[^\r\n]*\s+msid:[^\r\n]*\r?\n/gm, '');
-                // Fallback: if still contains the bad line, remove any a=ssrc with msid substring
-                if (fixedSdp.includes(' msid:')) {
-                    fixedSdp = fixedSdp.replace(/^a=ssrc:.*msid:.*\r?\n/gm, '');
-                }
-                console.log('[room] retrying setRemoteDescription with fixed SDP for', msg.from, 'removed', (msg.data.sdp.match(/^a=ssrc:.*msid:/gm) || []).length, 'lines');
-                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: fixedSdp }));
-            }
+           const pc = createPeer(msg.from);
+try {
+    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.data.sdp }));
+} catch (e) {
+    console.warn('[room] setRemoteDescription offer failed, trying SDP fix for', msg.from, e.message);
+    const fixedSdp = stripLegacySsrcMsidLines(msg.data.sdp);
+    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: fixedSdp }));
+}
             flushPendingIce(msg.from);
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -766,15 +768,12 @@
             const pc = peers.get(msg.from);
             if (!pc) return;
             try {
-                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.data.sdp }));
-            } catch (e) {
-                console.warn('[room] setRemoteDescription answer failed, trying SDP fix for', msg.from, e.message);
-                let fixedSdp = msg.data.sdp.replace(/^a=ssrc:[^\r\n]*\s+msid:[^\r\n]*\r?\n/gm, '');
-                if (fixedSdp.includes(' msid:')) {
-                    fixedSdp = fixedSdp.replace(/^a=ssrc:.*msid:.*\r?\n/gm, '');
-                }
-                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: fixedSdp }));
-            }
+    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.data.sdp }));
+} catch (e) {
+    console.warn('[room] setRemoteDescription answer failed, trying SDP fix for', msg.from, e.message);
+    const fixedSdp = stripLegacySsrcMsidLines(msg.data.sdp);
+    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: fixedSdp }));
+}
             flushPendingIce(msg.from);
         } catch (err) {
             console.warn('[room] handleAnswer error for', msg.from, ':', err, 'SDP head:', String(msg.data.sdp).slice(0, 400));
