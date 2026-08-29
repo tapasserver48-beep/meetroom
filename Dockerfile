@@ -39,6 +39,15 @@ RUN docker-php-ext-install pcntl
 RUN docker-php-ext-install posix
 RUN docker-php-ext-install sockets
 
+ARG VITE_REVERB_APP_KEY=local
+ARG VITE_REVERB_HOST=meetroom-0ris.onrender.com
+ARG VITE_REVERB_PORT=443
+ARG VITE_REVERB_SCHEME=https
+ENV VITE_REVERB_APP_KEY=${VITE_REVERB_APP_KEY}
+ENV VITE_REVERB_HOST=${VITE_REVERB_HOST}
+ENV VITE_REVERB_PORT=${VITE_REVERB_PORT}
+ENV VITE_REVERB_SCHEME=${VITE_REVERB_SCHEME}
+
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
