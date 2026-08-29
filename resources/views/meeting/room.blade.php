@@ -717,7 +717,7 @@
 //newchanges
 function stripLegacySsrcMsidLines(sdp) {
     const lines = sdp.split(/\r\n|\n/);
-    const filtered = lines.filter(line => !(line.startsWith('a=ssrc:') && line.includes('msid:')));
+    const filtered = lines.filter(line => !line.startsWith('a=ssrc:'));
     const removed = lines.length - filtered.length;
     console.log('[room] stripLegacySsrcMsidLines removed', removed, 'line(s)');
     return filtered.join('\r\n');
